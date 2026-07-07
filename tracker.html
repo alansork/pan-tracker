@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pan</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- The whole app is one full-screen 3D canvas plus two whisper-quiet labels. -->
+  <div id="hud">
+    <div id="hud-time">—</div>
+    <div id="hud-lon">—</div>
+  </div>
+  <div id="music" title="music (m)">♪</div>
+  <div id="hint">drag · scroll · double-click moons · ←→ time · m ♪</div>
+
+  <script src="vendor/three.min.js"></script>
+  <script src="orbit.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

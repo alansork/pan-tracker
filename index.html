@@ -3,20 +3,72 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Pan</title>
-  <link rel="stylesheet" href="styles.css" />
+  <title>pan — by sorkthropic</title>
+  <style>
+    /* The landing page: black space, a name, a purpose, a door. */
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: #000;
+      display: grid;
+      place-items: center;
+      font-family: "SF Mono", ui-monospace, Menlo, monospace;
+      -webkit-font-smoothing: antialiased;
+    }
+    main {
+      text-align: center;
+      letter-spacing: 0.08em;
+      animation: appear 2.4s ease both;
+    }
+    @keyframes appear { from { opacity: 0; } to { opacity: 1; } }
+
+    .name {
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.35);
+      margin-bottom: 26px;
+    }
+    h1 {
+      font-size: 44px;
+      font-weight: 200;
+      color: rgba(255, 255, 255, 0.92);
+      letter-spacing: 0.5em;
+      margin: 0 0 22px 0.5em;   /* left inset balances the letter-spacing */
+    }
+    .purpose {
+      font-size: 12px;
+      line-height: 1.9;
+      color: rgba(255, 255, 255, 0.5);
+      max-width: 44ch;
+      margin: 0 auto 54px;
+    }
+    a.enter {
+      display: inline-block;
+      padding: 13px 44px;
+      font-size: 12px;
+      letter-spacing: 0.35em;
+      text-indent: 0.35em;
+      color: rgba(255, 255, 255, 0.75);
+      text-decoration: none;
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      border-radius: 999px;
+      transition: border-color 0.5s ease, color 0.5s ease;
+    }
+    a.enter:hover {
+      border-color: rgba(255, 255, 255, 0.65);
+      color: #fff;
+    }
+  </style>
 </head>
 <body>
-  <!-- The whole app is one full-screen 3D canvas plus two whisper-quiet labels. -->
-  <div id="hud">
-    <div id="hud-time">—</div>
-    <div id="hud-lon">—</div>
-  </div>
-  <div id="music" title="music (m)">♪</div>
-  <div id="hint">drag · scroll · double-click moons · ←→ time · m ♪</div>
-
-  <script src="vendor/three.min.js"></script>
-  <script src="orbit.js"></script>
-  <script src="app.js"></script>
+  <main>
+    <div class="name">sorkthropic</div>
+    <h1>pan</h1>
+    <p class="purpose">
+      the live position of saturn's ravioli-shaped moon,
+      computed from its real orbit — right now, as you read this —
+      and rendered among the rings.
+    </p>
+    <a class="enter" href="tracker.html">enter</a>
+  </main>
 </body>
 </html>

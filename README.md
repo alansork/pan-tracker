@@ -10,7 +10,7 @@ Built by **sorkthropic**.
 
 ## Run it
 
-Open `index.html` in any browser. No install, no internet, no build step.
+Open `index.html` in any browser (the landing page — the button takes you to `tracker.html`, the animation itself). No install, no internet, no build step.
 
 - **drag** — orbit the camera (fast and loose)
 - **scroll** — zoom
