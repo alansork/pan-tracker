@@ -1,0 +1,39 @@
+/* Minimal to the point of near-invisibility: black space, one canvas,
+   a few lines of tiny grey monospace text in the corner. */
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+  cursor: default;
+}
+
+canvas { display: block; }
+
+#hud {
+  position: fixed;
+  left: 18px;
+  bottom: 16px;
+  font: 11px/1.7 "SF Mono", ui-monospace, Menlo, monospace;
+  color: rgba(255, 255, 255, 0.55);
+  letter-spacing: 0.06em;
+  user-select: none;
+  pointer-events: none;
+}
+
+#hud-name { color: rgba(255, 255, 255, 0.85); }
+
+#hint {
+  position: fixed;
+  right: 18px;
+  bottom: 16px;
+  font: 10px/1.6 "SF Mono", ui-monospace, Menlo, monospace;
+  color: rgba(255, 255, 255, 0.28);
+  letter-spacing: 0.06em;
+  user-select: none;
+  pointer-events: none;
+  transition: opacity 2s ease;
+}
+
+#hint.faded { opacity: 0; }
