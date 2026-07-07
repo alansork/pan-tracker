@@ -1,8 +1,9 @@
 # Pan Tracker
 
-A tiny observatory for **Pan**, Saturn's ravioli-shaped shepherd moon. Open it
-any time and see exactly where Pan is on its 13.8-hour lap around Saturn —
-**right now**, computed entirely offline.
+A tiny observatory for **Pan**, Saturn's ravioli-shaped shepherd moon — plus
+its neighbours **Daphnis** and **Atlas**. Open it any time and see exactly
+where they are on their laps around Saturn — **right now**, computed entirely
+offline. With a soundtrack.
 
 Built by **sorkthropic**.
 
@@ -10,41 +11,52 @@ Built by **sorkthropic**.
 
 Open `index.html` in any browser. No install, no internet, no build step.
 
-- **drag** — orbit the camera around Saturn
+- **drag** — orbit the camera (fast and loose)
 - **scroll** — zoom
-- **double-click** — fly out to Pan for a close-up of the ravioli (and back)
+- **double-click** — tour: Saturn → Pan → Daphnis → Atlas → back
+- **← / →** — time warp (up to a day per second, forwards or backwards);
+  **space** snaps back to right now
+- **m** (or click the ♪) — toggle the soundtrack ("ZF Archa 97")
+- URL options: `?view=pan` / `daphnis` / `atlas` to start there; `?silent`
+  for no audio
+- there may or may not be someone jogging around Pan if you fly in close
 
-## How it knows where Pan is
+## How it knows where the moons are
 
-Pan's orbit is almost a perfect circle lying flat in Saturn's ring plane, so
-its position at any moment is a single angle. `orbit.js` holds two constants
-calibrated against NASA/JPL Horizons ephemeris data (solution SAT415, fit to
-Cassini spacecraft tracking):
+These orbits are almost perfect circles lying flat in Saturn's ring plane, so
+each moon's position at any moment is a single angle. `orbit.js` holds
+per-moon constants calibrated against NASA/JPL Horizons ephemeris data (fit
+to Cassini spacecraft tracking):
 
-| constant | value |
-|---|---|
-| longitude at epoch 2026-07-07 00:00 TDB | 284.9029784° |
-| mean motion | 626.0317363°/day (13.8012 h per lap) |
-| orbit radius | 133,584 km — inside the Encke Gap |
+| moon | epoch (TDB) | longitude | mean motion | orbit radius |
+|---|---|---|---|---|
+| Pan | 2026-07-07 | 284.90298° | 626.03174°/day (13.80 h) | 133,584 km — Encke Gap |
+| Daphnis | 2018-01-16 | 131.47222° | 605.97847°/day (14.26 h) | 136,505 km — Keeler Gap |
+| Atlas | 2026-07-07 | 306.90021° | 599.37759°/day (14.41 h) | 137,545 km — past the A ring |
 
 `longitude(now) = longitude(epoch) + speed × time since epoch`, with the
-69.184 s UTC→TDB clock correction applied. Checked against four independent
-Horizons samples (one from 6.5 years ago, 11,258 orbits away) — agreement is
-better than 0.001°, and the drift is a fraction of a degree per year.
+69.184 s UTC→TDB clock correction applied. Pan and Atlas are checked against
+independent Horizons samples 6.5 years apart — agreement better than 0.001°.
+Daphnis' NASA ephemeris ends with the Cassini mission (Jan 2018), so its
+position today is an extrapolation from an 8-year baseline: expect a possible
+few degrees of drift for that one.
 
 The Sun's true direction from Saturn (from Horizons) drives the lighting, so
 the shadow Saturn throws across its rings is the real one for today.
 
 ## What's real, what's not
 
-- **Real:** Pan's position and speed, the ring dimensions (C, B, A rings,
-  Cassini Division, Encke Gap, Keeler Gap, F ring, all in km), Saturn's size,
-  squashed shape and 10.56 h spin, Pan's 34.4 × 30.8 × 20.8 km ellipsoid shape
-  with its equatorial ridge, the Sun's direction.
-- **Artistic:** Pan is drawn ×60 its true size so it's visible at all (34 km
-  next to a 120,536 km planet is less than a pixel) — the corner label says so.
-  Cloud and ring textures are procedurally painted in Cassini-photo colors,
-  not photographs.
+- **Real:** each moon's position and speed, the ring dimensions (C, B, A
+  rings, Cassini Division, Encke Gap, Keeler Gap, F ring, all in km),
+  Saturn's size, squashed shape, 10.56 h spin and north-polar hexagon, the
+  moons' measured ellipsoid shapes with their equatorial ridges, the Sun's
+  direction (which drives the lighting and ring shadows), warm Saturn-shine
+  on the moons' night sides.
+- **Artistic:** the moons are drawn ×60 their true size so they're visible at
+  all (34 km next to a 120,536 km planet is less than a pixel) — the corner
+  label says so. Cloud and ring textures are procedurally painted in
+  Cassini-photo colors, not photographs. The koala is not to scale. Koalas
+  cannot jog.
 
 ## Tests
 

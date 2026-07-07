@@ -1,48 +1,65 @@
-// orbit.js — Pan's real position, computed offline. No internet needed.
+// orbit.js — real moon positions, computed offline. No internet needed.
 //
 // How it works, in plain language:
-//   Pan's orbit around Saturn is almost a perfect circle (eccentricity ~0.00001)
-//   lying almost exactly in Saturn's ring plane (inclination ~0.0001 degrees).
-//   That means its position at any moment is described by ONE number: how far
-//   around the circle it is (its "longitude"). We know where Pan was at a
-//   reference moment (the "epoch") and exactly how fast it moves, so:
+//   Pan, Daphnis and Atlas ride almost perfectly circular orbits lying almost
+//   exactly in Saturn's ring plane. That means each moon's position at any
+//   moment is described by ONE number: how far around the circle it is (its
+//   "longitude"). We know where each moon was at a reference moment (its
+//   "epoch") and exactly how fast it moves, so:
 //
 //       longitude(now) = longitude(epoch) + speed * (now - epoch)
 //
-//   The two constants below were calibrated against NASA/JPL Horizons
-//   ephemeris data (solution SAT415, fit to Cassini spacecraft tracking).
-//   The mean motion was derived from a 6.5-year baseline (2020-01-01 to
-//   2026-07-07) and reproduces JPL's positions to better than 0.001 degrees.
+//   All constants below were calibrated against NASA/JPL Horizons ephemeris
+//   data (fit to Cassini spacecraft tracking), using long baselines so the
+//   rates are exact to a tiny fraction of a degree per year:
+//   - Pan:     epoch 2026-07-07, rate from a 6.5-year baseline (<0.001° error)
+//   - Atlas:   epoch 2026-07-07, rate from a 6.5-year baseline (<0.001° error)
+//   - Daphnis: NASA's ephemeris ends with the Cassini mission (Jan 2018), so
+//     its epoch is 2018-01-16 with the rate from an 8-year baseline. Positions
+//     "now" are an extrapolation — expect a possible few degrees of drift.
 
-const PAN = {
-  // Reference moment: 2026-07-07 00:00 TDB, as a Julian Day number.
-  epochJdTdb: 2461228.5,
-
-  // Where Pan was at that moment: angle in Saturn's equatorial plane,
-  // measured counterclockwise (as seen from Saturn's north pole),
-  // in the IAU_SATURN "body equator and node of date" frame. From Horizons.
-  lonAtEpochDeg: 284.9029784479126,
-
-  // How fast Pan moves: degrees per day. One full lap takes 13.801 hours.
-  meanMotionDegPerDay: 626.0317363036654,
-
-  // Radius of the orbit in km (inside the Encke Gap of Saturn's A ring).
-  orbitRadiusKm: 133583.958,
-
-  // Pan's real size in km (it is TINY next to Saturn): radii of the
-  // "ravioli" along its three axes. From Cassini imaging.
-  radiiKm: { long: 17.2, mid: 15.4, polar: 10.4 },
+const MOONS = {
+  pan: {
+    title: "pan · saturn xviii",
+    epochJdTdb: 2461228.5,               // 2026-07-07 00:00 TDB
+    lonAtEpochDeg: 284.9029784479126,
+    meanMotionDegPerDay: 626.0317363036654,   // one lap = 13.801 h
+    orbitRadiusKm: 133583.958,           // inside the Encke Gap
+    radiiKm: { long: 17.2, mid: 15.4, polar: 10.4 },
+    ridgeKm: 3.5,                        // the ravioli seam
+  },
+  daphnis: {
+    title: "daphnis · saturn xxxv",
+    epochJdTdb: 2458134.5,               // 2018-01-16 00:00 TDB (see note above)
+    lonAtEpochDeg: 131.47221649647443,
+    meanMotionDegPerDay: 605.9784674168349,   // one lap = 14.258 h
+    orbitRadiusKm: 136505.475,           // inside the Keeler Gap
+    radiiKm: { long: 4.6, mid: 4.5, polar: 2.8 },
+    ridgeKm: 0.9,
+  },
+  atlas: {
+    title: "atlas · saturn xv",
+    epochJdTdb: 2461228.5,               // 2026-07-07 00:00 TDB
+    lonAtEpochDeg: 306.90021100636443,
+    meanMotionDegPerDay: 599.3775895885545,   // one lap = 14.415 h
+    orbitRadiusKm: 137545.371,           // just past the A ring's outer edge
+    radiiKm: { long: 20.5, mid: 17.8, polar: 9.4 },
+    ridgeKm: 6.5,                        // Atlas is the smoothest flying saucer
+  },
 };
 
-PAN.periodDays = 360 / PAN.meanMotionDegPerDay; // ≈ 0.5750507 days
+for (const m of Object.values(MOONS)) {
+  m.periodDays = 360 / m.meanMotionDegPerDay;
+}
 
-// Direction from Saturn to the Sun at the epoch (unit vector, same frame),
+// Direction from Saturn to the Sun at Pan's epoch (unit vector, same frame),
 // from Horizons. Used only for realistic lighting. It drifts very slowly:
 // Saturn takes 29.46 years to orbit the Sun, so we rotate this vector by
 // 360/10759.22 degrees per day around Saturn's pole. (The Sun's small
 // out-of-plane tilt, currently -6.4 degrees, is treated as constant —
 // it changes by only ~1 degree per year.)
 const SUN = {
+  epochJdTdb: 2461228.5,
   dirAtEpoch: { x: 0.5358420615207926, y: 0.8369861865114306, z: -0.11102886423898967 },
   degPerDay: 360 / 10759.22,
 };
@@ -64,29 +81,35 @@ function jdTdbFromDate(date) {
   return jdUtcFromDate(date) + 69.184 / 86400;
 }
 
-// --- Pan's position ---------------------------------------------------------
+// --- Moon positions ---------------------------------------------------------
 
-// Pan's longitude (0..360 degrees) at a given TDB Julian Day.
-function panLongitudeDeg(jdTdb) {
+// A moon's longitude (0..360 degrees) at a given TDB Julian Day, measured in
+// Saturn's equatorial plane, counterclockwise seen from Saturn's north pole
+// (IAU_SATURN "body equator and node of date" frame).
+function moonLongitudeDeg(moon, jdTdb) {
   const lon =
-    PAN.lonAtEpochDeg + PAN.meanMotionDegPerDay * (jdTdb - PAN.epochJdTdb);
+    moon.lonAtEpochDeg + moon.meanMotionDegPerDay * (jdTdb - moon.epochJdTdb);
   return ((lon % 360) + 360) % 360; // wrap into 0..360
 }
 
-// Pan's x/y/z position in km, in Saturn's equatorial frame.
+// A moon's x/y/z position in km, in Saturn's equatorial frame.
 // x/y lie in the ring plane, z points to Saturn's north pole (always ~0).
-function panPositionKm(jdTdb) {
-  const lon = panLongitudeDeg(jdTdb) * DEG;
+function moonPositionKm(moon, jdTdb) {
+  const lon = moonLongitudeDeg(moon, jdTdb) * DEG;
   return {
-    x: PAN.orbitRadiusKm * Math.cos(lon),
-    y: PAN.orbitRadiusKm * Math.sin(lon),
+    x: moon.orbitRadiusKm * Math.cos(lon),
+    y: moon.orbitRadiusKm * Math.sin(lon),
     z: 0,
   };
 }
 
+// Pan-flavoured shorthands (the app's headline moon, and what the tests use).
+function panLongitudeDeg(jdTdb) { return moonLongitudeDeg(MOONS.pan, jdTdb); }
+function panPositionKm(jdTdb) { return moonPositionKm(MOONS.pan, jdTdb); }
+
 // Unit vector pointing from Saturn toward the Sun at a given TDB Julian Day.
 function sunDirection(jdTdb) {
-  const a = SUN.degPerDay * (jdTdb - PAN.epochJdTdb) * DEG;
+  const a = SUN.degPerDay * (jdTdb - SUN.epochJdTdb) * DEG;
   const { x, y, z } = SUN.dirAtEpoch;
   return {
     x: x * Math.cos(a) - y * Math.sin(a),
@@ -98,10 +121,13 @@ function sunDirection(jdTdb) {
 // --- Exports (browser global + Node for tests) ------------------------------
 
 const Orbit = {
-  PAN,
+  MOONS,
+  PAN: MOONS.pan,
   SUN,
   jdUtcFromDate,
   jdTdbFromDate,
+  moonLongitudeDeg,
+  moonPositionKm,
   panLongitudeDeg,
   panPositionKm,
   sunDirection,

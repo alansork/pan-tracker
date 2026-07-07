@@ -83,15 +83,18 @@ sunLight.shadow.normalBias = 0.6;
 scene.add(sunLight);
 scene.add(sunLight.target);
 
-// A whisper of fill light so the night side is not pure void.
-scene.add(new THREE.AmbientLight(0x28313e, 0.35));
+// A whisper of fill light so the night side is not pure void, plus warm
+// "Saturn-shine": the planet and rings reflect sunlight onto the moons'
+// inward faces, just like earthshine on our own Moon.
+scene.add(new THREE.AmbientLight(0x28313e, 0.18));
+scene.add(new THREE.PointLight(0xc9b990, 0.4, 0, 0));   // glows from Saturn's center
 
 // --- Saturn ------------------------------------------------------------------
 
 // Procedural cloud bands painted onto a canvas: soft latitude stripes in
 // Cassini-photo colors, wobbled with noise, plus a few pale storm ovals.
 function makeSaturnTexture() {
-  const w = 1024, h = 512;
+  const w = 2048, h = 1024;
   const canvas = document.createElement("canvas");
   canvas.width = w; canvas.height = h;
   const ctx = canvas.getContext("2d");
@@ -118,9 +121,11 @@ function makeSaturnTexture() {
     return [0, 1, 2].map(k => a.c[k] + (b.c[k] - a.c[k]) * t);
   }
 
-  const wobble = makeNoise1D(11, 96);     // fine banding wobble
-  const wobble2 = makeNoise1D(23, 24);    // broad brightness drift
-  const streak = makeNoise1D(37, 128);    // horizontal streakiness
+  const wobble = makeNoise1D(11, 192);    // fine banding wobble
+  const wobble2 = makeNoise1D(23, 48);    // broad brightness drift
+  const wobble3 = makeNoise1D(29, 420);   // very fine thread-like banding
+  const streak = makeNoise1D(37, 256);    // horizontal streakiness
+  const streak2 = makeNoise1D(41, 640);   // finer turbulence along the bands
 
   const img = ctx.createImageData(w, h);
   for (let y = 0; y < h; y++) {
@@ -130,26 +135,39 @@ function makeSaturnTexture() {
       0.92 +
       0.10 * (wobble(v) - 0.5) * 2 +
       0.06 * (wobble2(v) - 0.5) * 2 +
-      0.035 * Math.sin(v * 145 + wobble(v) * 9);
+      0.03 * (wobble3(v) - 0.5) * 2 +
+      0.035 * Math.sin(v * 145 + wobble(v) * 9) +
+      0.018 * Math.sin(v * 470 + wobble3(v) * 14);
     const base = bandColor(v);
     for (let x = 0; x < w; x++) {
-      // Gentle along-band streaks, wavelength ~everything, amplitude ~2%.
-      const s = 1 + 0.02 * (streak(((x / w) + wobble(v)) % 1) - 0.5) * 2;
+      const u = x / w;
+      // Gentle along-band streaks + finer turbulence, a few % amplitude.
+      const s =
+        1 +
+        0.022 * (streak(((u) + wobble(v)) % 1) - 0.5) * 2 +
+        0.012 * (streak2(((u * 3) % 1 + wobble2(v)) % 1) - 0.5) * 2;
+      // The famous north-polar hexagon: a jet stream whose latitude
+      // wobbles with cos(6·longitude); slightly darker inside.
+      const hexV = 0.052 + 0.007 * Math.cos(6 * 2 * Math.PI * u);
+      let hex = 1;
+      if (v < hexV) hex = 0.90;                                   // inside: darker
+      const dEdge = Math.abs(v - hexV);
+      if (dEdge < 0.0035) hex *= 0.82;                            // the jet itself
       const k = (y * w + x) * 4;
-      img.data[k]     = Math.min(255, base[0] * bands * s);
-      img.data[k + 1] = Math.min(255, base[1] * bands * s);
-      img.data[k + 2] = Math.min(255, base[2] * bands * s * 0.985);
+      img.data[k]     = Math.min(255, base[0] * bands * s * hex);
+      img.data[k + 1] = Math.min(255, base[1] * bands * s * hex);
+      img.data[k + 2] = Math.min(255, base[2] * bands * s * 0.985 * (hex < 1 ? hex * 1.04 : 1));
       img.data[k + 3] = 255;
     }
   }
   ctx.putImageData(img, 0, 0);
 
-  // A few pale storm ovals in the temperate bands.
+  // Pale storm ovals in the temperate bands — more of them, varied sizes.
   const rand = mulberry32(7);
-  for (let i = 0; i < 9; i++) {
+  for (let i = 0; i < 22; i++) {
     const sx = rand() * w;
-    const sy = h * (rand() < 0.5 ? 0.22 + rand() * 0.12 : 0.66 + rand() * 0.14);
-    const rx = 6 + rand() * 22, ry = rx * (0.28 + rand() * 0.2);
+    const sy = h * (rand() < 0.5 ? 0.18 + rand() * 0.18 : 0.62 + rand() * 0.2);
+    const rx = 5 + rand() * 34, ry = rx * (0.22 + rand() * 0.22);
     const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, rx);
     g.addColorStop(0, "rgba(250, 244, 224, 0.35)");
     g.addColorStop(1, "rgba(250, 244, 224, 0)");
@@ -226,25 +244,27 @@ function ringProfile(rKm) {
 }
 
 function makeRingTexture() {
-  const w = 4096, h = 4;
+  const w = 8192, h = 4;
   const canvas = document.createElement("canvas");
   canvas.width = w; canvas.height = h;
   const ctx = canvas.getContext("2d");
   const img = ctx.createImageData(w, h);
 
-  // Three octaves of radial noise = the fine ringlet banding in photos.
-  const n1 = makeNoise1D(101, 1400);
-  const n2 = makeNoise1D(102, 420);
-  const n3 = makeNoise1D(103, 90);
+  // Four octaves of radial noise = the fine ringlet banding in photos,
+  // down to razor-thin threads.
+  const n1 = makeNoise1D(101, 3200);
+  const n2 = makeNoise1D(102, 900);
+  const n3 = makeNoise1D(103, 260);
+  const n4 = makeNoise1D(104, 60);
 
   for (let x = 0; x < w; x++) {
     const t = x / (w - 1);
     const rKm = RING_INNER_KM + t * (RING_OUTER_KM - RING_INNER_KM);
     let [alpha, r, g, b] = ringProfile(rKm);
     const band =
-      0.72 + 0.34 * (0.55 * n1(t) + 0.3 * n2(t) + 0.15 * n3(t));
+      0.68 + 0.40 * (0.42 * n1(t) + 0.28 * n2(t) + 0.18 * n3(t) + 0.12 * n4(t));
     alpha = Math.min(1, alpha * band);
-    const lum = 0.93 + 0.14 * (n2((t + 0.37) % 1) - 0.5);
+    const lum = 0.92 + 0.10 * (n2((t + 0.37) % 1) - 0.5) + 0.06 * (n1((t + 0.11) % 1) - 0.5);
     for (let y = 0; y < h; y++) {
       const k = (y * w + x) * 4;
       img.data[k]     = Math.min(255, r * lum);
@@ -315,14 +335,15 @@ function makeNoise2DWrap(seed, gw, gh) {
   };
 }
 
-function makePanGeometry() {
-  const R = Orbit.PAN.radiiKm;                    // long 17.2, mid 15.4, polar 10.4
+function makeMoonGeometry(def, seed) {
+  const R = def.radiiKm;
   const geo = new THREE.SphereGeometry(1, 160, 120);
   const pos = geo.attributes.position;
-  const ridgeNoise = makeNoise2DWrap(51, 24, 1);  // gentle unevenness of the ridge
-  const hills = makeNoise2DWrap(52, 10, 6);       // broad, soft terrain
-  const detail = makeNoise2DWrap(53, 36, 18);     // finer texture
+  const ridgeNoise = makeNoise2DWrap(seed, 24, 1);      // unevenness of the ridge
+  const hills = makeNoise2DWrap(seed + 1, 10, 6);       // broad, soft terrain
+  const detail = makeNoise2DWrap(seed + 2, 36, 18);     // finer texture
   const colors = new Float32Array(pos.count * 3);
+  const lumpScale = R.long / 17.2;   // smaller moons get shallower terrain
 
   for (let i = 0; i < pos.count; i++) {
     const d = new THREE.Vector3(pos.getX(i), pos.getY(i), pos.getZ(i)).normalize();
@@ -335,23 +356,27 @@ function makePanGeometry() {
     const rEllipsoid = 1 / Math.sqrt(
       (d.x / R.long) ** 2 + (d.y / R.polar) ** 2 + (d.z / R.mid) ** 2);
 
-    // The equatorial ridge: a smooth 3.5 km welt hugging latitude 0,
-    // slightly uneven around the circumference like the real one.
+    // The equatorial ridge: the smooth welt of swept-up ring dust hugging
+    // latitude 0 (Pan's ravioli seam, Atlas's flying-saucer brim),
+    // slightly uneven around the circumference like the real ones.
     const ridgeShape = Math.exp(-((lat / 0.19) ** 2));
-    const ridge = 3.5 * (0.85 + 0.3 * (ridgeNoise(u, 0.5) - 0.5)) * ridgeShape;
+    const ridge = def.ridgeKm * (0.85 + 0.3 * (ridgeNoise(u, 0.5) - 0.5)) * ridgeShape;
 
     // Low, soft terrain everywhere (a few hundred meters), fading at the
-    // poles so the mesh seam stays sealed. Pan is smooth — it is coated in
-    // fine ring dust — so no sharp features.
+    // poles so the mesh seam stays sealed. These moons are smooth — they
+    // are coated in fine ring dust — so no sharp features.
     const lump =
-      (0.55 * (hills(u, v) - 0.5) + 0.25 * (detail(u, v) - 0.5)) * Math.cos(lat);
+      (0.55 * (hills(u, v) - 0.5) + 0.25 * (detail(u, v) - 0.5)) *
+      Math.cos(lat) * lumpScale;
 
     const r = rEllipsoid + ridge + lump;
     pos.setXYZ(i, d.x * r, d.y * r, d.z * r);     // km, scaled to units below
 
     // The ridge is visibly brighter than the body in Cassini photos
     // (cleaner ice dust); tint the vertices accordingly.
-    const tone = 0.86 + 0.13 * ridgeShape + 0.05 * (detail(u, v) - 0.5);
+    // (the mottling fades at the poles, like the terrain, to avoid streaks)
+    const tone =
+      0.86 + 0.13 * ridgeShape + 0.05 * (detail(u, v) - 0.5) * Math.cos(lat);
     colors[i * 3] = tone;
     colors[i * 3 + 1] = tone * 0.995;
     colors[i * 3 + 2] = tone * 0.975;
@@ -361,21 +386,32 @@ function makePanGeometry() {
   return geo;
 }
 
-const pan = new THREE.Mesh(
-  makePanGeometry(),
-  new THREE.MeshStandardMaterial({
-    color: 0xf4efe6,
-    vertexColors: true,
-    roughness: 0.98,
-    metalness: 0,
-  })
-);
-pan.scale.setScalar(KM * PAN_VISUAL_SCALE);
-pan.castShadow = true;
-// No receiveShadow: Pan sits exactly in the ring plane, so the paper-thin
-// ring shadow grazes it and covers it in shadow-map acne. The Sun lights it.
-pan.receiveShadow = false;
-scene.add(pan);
+function makeMoonMesh(def, seed) {
+  const mesh = new THREE.Mesh(
+    makeMoonGeometry(def, seed),
+    new THREE.MeshStandardMaterial({
+      color: 0xf4efe6,
+      vertexColors: true,
+      roughness: 0.98,
+      metalness: 0,
+    })
+  );
+  mesh.scale.setScalar(KM * PAN_VISUAL_SCALE);
+  mesh.castShadow = true;
+  // No receiveShadow: these moons sit exactly in the ring plane, so the
+  // paper-thin ring shadow grazes them and covers them in shadow-map acne.
+  mesh.receiveShadow = false;
+  scene.add(mesh);
+  return mesh;
+}
+
+// All three ring-region shepherd moons, each at its true position.
+const moons = {
+  pan: makeMoonMesh(Orbit.MOONS.pan, 51),
+  daphnis: makeMoonMesh(Orbit.MOONS.daphnis, 81),
+  atlas: makeMoonMesh(Orbit.MOONS.atlas, 111),
+};
+const pan = moons.pan;   // the headline moon
 
 // A soft halo so you can find the little one from far away.
 // It quietly fades out as you get close.
@@ -401,6 +437,54 @@ function makeHalo() {
 }
 const halo = makeHalo();
 scene.add(halo);
+
+// --- Easter egg: sorkthropic's koala, out for a jog around Pan -------------------
+// (the ASCII koala from the profile README, painted onto a tiny billboard;
+// it only appears once you fly in close to Pan)
+function makeKoalaSprite() {
+  const lines = [
+    '     .-"-.       .-"-.',
+    "    /     \\.---./     \\",
+    "   ;                   ;",
+    "   :     o       o     :",
+    "    \\ ~     (_)     ~ /",
+    "     ;    '.___.'    ;",
+    "      \\             /",
+    "       '-..____..-'",
+  ];
+  const c = document.createElement("canvas");
+  c.width = 256; c.height = 128;
+  const ctx = c.getContext("2d");
+  ctx.font = "13px Menlo, monospace";
+  // Dark pass then light pass = readable on both the day and night side.
+  ctx.fillStyle = "rgba(20, 24, 28, 0.9)";
+  lines.forEach((ln, i) => ctx.fillText(ln, 31, 23 + i * 13));
+  ctx.fillStyle = "#e8edf2";
+  lines.forEach((ln, i) => ctx.fillText(ln, 30, 22 + i * 13));
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: new THREE.CanvasTexture(c),
+    transparent: true,
+    depthWrite: false,
+  }));
+  // Sized in km because it rides inside Pan's mesh (which is scaled to units).
+  sprite.scale.set(10, 5, 1);
+  return sprite;
+}
+const koala = makeKoalaSprite();
+koala.visible = false;
+pan.add(koala);
+let koalaLap = 0;   // how far around Pan's equator the koala has jogged
+
+function updateKoala(dt, nowMs, camDistToPan) {
+  koala.visible = camDistToPan < 30;   // a secret for close visitors only
+  if (!koala.visible) return;
+  koalaLap += dt * 0.3;                // one lap of Pan every ~20 s
+  const R = Orbit.PAN.radiiKm;
+  const rEq = 1 / Math.hypot(Math.cos(koalaLap) / R.long, Math.sin(koalaLap) / R.mid);
+  const hop = 0.9 * Math.abs(Math.sin(nowMs * 0.006));       // happy little hops
+  const r = rEq + Orbit.PAN.ridgeKm + 2.4 + hop;
+  koala.position.set(Math.cos(koalaLap) * r, 0, Math.sin(koalaLap) * r);
+}
 
 // Whisper-faint circle marking the orbit itself.
 function makeOrbitLine() {
@@ -457,6 +541,7 @@ function makeStars() {
       vertexColors: true,
       transparent: true,
       depthWrite: false,
+      blending: THREE.AdditiveBlending,   // faint stars brighten, never darken
     });
     group.add(new THREE.Points(geo, mat));
   }
@@ -468,17 +553,28 @@ function makeStars() {
 }
 scene.add(makeStars());
 
-// --- Camera controls: drag to orbit, scroll to zoom, double-click to visit Pan ---
+// --- Camera controls: drag to orbit, scroll to zoom, double-click to hop moons ---
 
-// Open with ?view=pan to start at the close-up (bookmarkable).
-const startAtPan = new URLSearchParams(location.search).get("view") === "pan";
+// Each stop on the double-click tour: what to look at, how close to swoop in,
+// and how close the scroll wheel may go.
+const TOUR = {
+  saturn: { radius: 330, minR: 75 },
+  pan: { radius: 7, minR: 1.7 },
+  daphnis: { radius: 2.2, minR: 0.5 },
+  atlas: { radius: 8, minR: 2.0 },
+};
+const TOUR_ORDER = ["saturn", "pan", "daphnis", "atlas"];
+
+// Open with ?view=pan (or daphnis / atlas) to start there (bookmarkable).
+const startView = new URLSearchParams(location.search).get("view");
+const startMode = TOUR[startView] ? startView : "saturn";
 const view = {
-  mode: startAtPan ? "pan" : "saturn",  // "saturn" or "pan"
+  mode: startMode,
   theta: 0.9,                           // horizontal angle
-  phi: 1.83,                            // vertical angle (slightly below the
+  phi: 1.83,                           // vertical angle (slightly below the
                                         // rings — that's the sunlit side now)
-  radius: startAtPan ? 7 : 330,
-  desiredRadius: startAtPan ? 7 : 330,
+  radius: TOUR[startMode].radius,
+  desiredRadius: TOUR[startMode].radius,
   target: new THREE.Vector3(0, 0, 0),   // what the camera looks at
   lastPointer: null,
   lastInteraction: performance.now(),
@@ -493,40 +589,93 @@ window.addEventListener("pointermove", (e) => {
   const dx = e.clientX - view.lastPointer.x;
   const dy = e.clientY - view.lastPointer.y;
   view.lastPointer = { x: e.clientX, y: e.clientY };
-  view.theta -= dx * 0.005;
-  view.phi = Math.min(Math.PI - 0.05, Math.max(0.05, view.phi - dy * 0.005));
+  view.theta -= dx * 0.009;
+  view.phi = Math.min(Math.PI - 0.05, Math.max(0.05, view.phi - dy * 0.009));
   view.lastInteraction = performance.now();
 });
 window.addEventListener("pointerup", () => { view.lastPointer = null; });
 renderer.domElement.addEventListener("wheel", (e) => {
   e.preventDefault();
-  const minR = view.mode === "pan" ? 1.6 : 75;
   view.desiredRadius = Math.min(3000,
-    Math.max(minR, view.desiredRadius * Math.exp(e.deltaY * 0.0012)));
+    Math.max(TOUR[view.mode].minR, view.desiredRadius * Math.exp(e.deltaY * 0.0022)));
   view.lastInteraction = performance.now();
 }, { passive: false });
 renderer.domElement.addEventListener("dblclick", () => {
-  view.mode = view.mode === "saturn" ? "pan" : "saturn";
-  view.desiredRadius = view.mode === "pan" ? 7 : 330;
+  const next = TOUR_ORDER[(TOUR_ORDER.indexOf(view.mode) + 1) % TOUR_ORDER.length];
+  view.mode = next;
+  view.desiredRadius = TOUR[next].radius;
   view.lastInteraction = performance.now();
 });
 
+// --- Time warp: ← → to fly through time, space to snap back to now ---------------
+// The scene normally runs on the real clock. Warping multiplies time so you
+// can watch the moons actually race around their lanes (Pan's real lap takes
+// 13.8 hours — patience is a virtue, warp is a feature).
+
+const WARP_LEVELS = [-86400, -21600, -3600, -600, -60, 1, 60, 600, 3600, 21600, 86400];
+const warp = { idx: WARP_LEVELS.indexOf(1), simMs: Date.now() };
+const isLive = () => WARP_LEVELS[warp.idx] === 1;
+
+window.addEventListener("keydown", (e) => {
+  if (e.key === "ArrowRight") warp.idx = Math.min(WARP_LEVELS.length - 1, warp.idx + 1);
+  else if (e.key === "ArrowLeft") warp.idx = Math.max(0, warp.idx - 1);
+  else if (e.key === " " || e.key === "0") warp.idx = WARP_LEVELS.indexOf(1);
+  else if (e.key === "m") toggleMusic();
+  else return;
+  if (isLive()) warp.simMs = Date.now();   // snapping back = exactly now
+  e.preventDefault();
+});
+
+// --- Soundtrack -------------------------------------------------------------------
+
+// Open with ?silent to start with no soundtrack at all.
+const SILENT = new URLSearchParams(location.search).has("silent");
+const music = SILENT ? null : new Audio("assets/02-zf-archa-97.mp3");
+if (music) { music.loop = true; music.volume = 0.55; }
+let musicWanted = !SILENT;
+const musicEl = document.getElementById("music");
+
+function updateMusicEl() {
+  musicEl.style.opacity = musicWanted ? 0.6 : 0.18;
+}
+function tryPlayMusic() {
+  if (music && musicWanted) music.play().catch(() => {}); // browsers may want a click first
+}
+function toggleMusic() {
+  if (!music) return;
+  musicWanted = !musicWanted;
+  if (musicWanted) tryPlayMusic(); else music.pause();
+  updateMusicEl();
+}
+musicEl.addEventListener("click", (e) => { e.stopPropagation(); toggleMusic(); });
+window.addEventListener("pointerdown", tryPlayMusic);
+tryPlayMusic();
+updateMusicEl();
+
 // --- HUD -------------------------------------------------------------------------
 
+const hudName = document.getElementById("hud-name");
 const hudTime = document.getElementById("hud-time");
 const hudLon = document.getElementById("hud-lon");
 const hint = document.getElementById("hint");
-setTimeout(() => hint.classList.add("faded"), 9000);
+setTimeout(() => hint.classList.add("faded"), 12000);
 
 const MONTHS = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
-function updateHud(now, lonDeg) {
+function updateHud(now, jd) {
+  // Report on whichever moon you're visiting (Pan when gazing at Saturn).
+  const key = view.mode === "saturn" ? "pan" : view.mode;
+  const def = Orbit.MOONS[key];
+  const rate = WARP_LEVELS[warp.idx];
   const p = (n) => String(n).padStart(2, "0");
+  hudName.textContent = def.title;
   hudTime.textContent =
     `${p(now.getDate())} ${MONTHS[now.getMonth()]} ${now.getFullYear()} ` +
-    `${p(now.getHours())}:${p(now.getMinutes())}:${p(now.getSeconds())}`;
+    `${p(now.getHours())}:${p(now.getMinutes())}:${p(now.getSeconds())}` +
+    (isLive() ? "" : `  ·  warp ×${rate > 0 ? rate : "−" + -rate}`);
   hudLon.textContent =
-    `longitude ${lonDeg.toFixed(2)}° · lap 13.80 h · ` +
-    `shown ×${PAN_VISUAL_SCALE}, truly 34 km`;
+    `longitude ${Orbit.moonLongitudeDeg(def, jd).toFixed(2)}° · ` +
+    `lap ${(def.periodDays * 24).toFixed(2)} h · ` +
+    `shown ×${PAN_VISUAL_SCALE}, truly ${Math.round(def.radiiKm.long * 2)} km`;
 }
 
 // --- Main loop ---------------------------------------------------------------------
@@ -538,15 +687,19 @@ function animate() {
   const dt = Math.min((nowMs - lastFrame) / 1000, 0.1);
   lastFrame = nowMs;
 
-  // The real clock drives everything.
-  const now = new Date();
+  // The clock drives everything: the real one, or the warped one.
+  if (isLive()) warp.simMs = Date.now();
+  else warp.simMs += dt * 1000 * WARP_LEVELS[warp.idx];
+  const now = new Date(warp.simMs);
   const jd = Orbit.jdTdbFromDate(now);
 
-  // Pan: exact real-time position (the whole point of the app).
-  const lonDeg = Orbit.panLongitudeDeg(jd);
-  pan.position.copy(toWorld(Orbit.panPositionKm(jd)));
-  // Tidally locked: Pan's long axis always points at Saturn.
-  pan.rotation.y = lonDeg * Math.PI / 180 + Math.PI;
+  // Every moon at its exact position (the whole point of the app),
+  // tidally locked so its long axis always points at Saturn.
+  for (const [key, mesh] of Object.entries(moons)) {
+    const def = Orbit.MOONS[key];
+    mesh.position.copy(toWorld(Orbit.moonPositionKm(def, jd)));
+    mesh.rotation.y = Orbit.moonLongitudeDeg(def, jd) * Math.PI / 180 + Math.PI;
+  }
 
   // Halo hugs Pan, sized for the current distance, fading when you're close.
   const camDistToPan = camera.position.distanceTo(pan.position);
@@ -555,14 +708,17 @@ function animate() {
   halo.material.opacity =
     (0.30 + 0.12 * Math.sin(nowMs * 0.002)) * smoothstep(12, 60, camDistToPan);
 
+  updateKoala(dt, nowMs, camDistToPan);
+
   // Sun where it really is; Saturn spins at its real 10.56 h rate.
   const sunDir = toWorld(Orbit.sunDirection(jd)).normalize();
   sunLight.position.copy(sunDir.multiplyScalar(900));
   saturn.rotation.y = ((jd - Orbit.PAN.epochJdTdb) * 24 / SATURN_DAY_HOURS) * Math.PI * 2;
 
   // Camera: smooth glide toward where it wants to be.
-  const targetGoal = view.mode === "pan" ? pan.position : new THREE.Vector3(0, 0, 0);
-  const glide = 1 - Math.exp(-dt * 4);
+  const targetGoal =
+    view.mode === "saturn" ? new THREE.Vector3(0, 0, 0) : moons[view.mode].position;
+  const glide = 1 - Math.exp(-dt * 7);
   view.target.lerp(targetGoal, glide);
   view.radius += (view.desiredRadius - view.radius) * glide;
   if (nowMs - view.lastInteraction > 10000) view.theta += dt * 0.012; // idle drift
@@ -574,7 +730,7 @@ function animate() {
   );
   camera.lookAt(view.target);
 
-  updateHud(now, lonDeg);
+  updateHud(now, jd);
   renderer.render(scene, camera);
 }
 

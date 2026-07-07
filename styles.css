@@ -37,3 +37,15 @@ canvas { display: block; }
 }
 
 #hint.faded { opacity: 0; }
+
+#music {
+  position: fixed;
+  right: 18px;
+  bottom: 38px;
+  font: 14px/1 "SF Mono", ui-monospace, Menlo, monospace;
+  color: #fff;
+  opacity: 0.6;
+  cursor: pointer;
+  user-select: none;
+  transition: opacity 0.4s ease;
+}

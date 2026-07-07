@@ -57,6 +57,26 @@ expectClose(
   angleDiff(Orbit.panLongitudeDeg(2458849.5), lonOf(1.257670185484696e4, -1.329903292250285e5)),
   0, 0.001, "matches Horizons 6.5 years before epoch");
 
+// --- Atlas vs Horizons --------------------------------------------------------
+expectClose(
+  angleDiff(Orbit.moonLongitudeDeg(Orbit.MOONS.atlas, 2461228.5),
+            lonOf(8.258542777493197e4, -1.099926189600768e5)),
+  0, 1e-9, "atlas matches Horizons at epoch 2026-07-07");
+expectClose(
+  angleDiff(Orbit.moonLongitudeDeg(Orbit.MOONS.atlas, 2458849.5),
+            lonOf(1.344911482869663e5, -2.953392090932829e4)),
+  0, 0.001, "atlas matches Horizons 6.5 years before epoch");
+
+// --- Daphnis vs Horizons (Cassini-era ephemeris) --------------------------------
+expectClose(
+  angleDiff(Orbit.moonLongitudeDeg(Orbit.MOONS.daphnis, 2458134.5),
+            lonOf(-9.040167784880569e4, 1.022804053950717e5)),
+  0, 1e-9, "daphnis matches Horizons at epoch 2018-01-16");
+expectClose(
+  angleDiff(Orbit.moonLongitudeDeg(Orbit.MOONS.daphnis, 2455197.5),
+            lonOf(-1.148537806471196e5, -7.377279213622262e4)),
+  0, 0.001, "daphnis matches Horizons 8 years before epoch");
+
 // --- Geometry sanity ----------------------------------------------------------
 // Position must sit on the orbit circle, in the ring plane.
 const p = Orbit.panPositionKm(2461228.5);
