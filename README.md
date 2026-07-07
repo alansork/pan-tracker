@@ -1,9 +1,10 @@
 # Pan Tracker
 
 A tiny observatory for **Pan**, Saturn's ravioli-shaped shepherd moon — plus
-its neighbours **Daphnis** and **Atlas**. Open it any time and see exactly
-where they are on their laps around Saturn — **right now**, computed entirely
-offline. With a soundtrack.
+its equally ravioli-shaped neighbour **Atlas**. Open it any time and see
+exactly where they are on their laps around Saturn — **right now**, computed
+entirely offline. Each moon carries a floating name label so you always know
+who is who. With a soundtrack.
 
 Built by **sorkthropic**.
 
@@ -13,12 +14,11 @@ Open `index.html` in any browser. No install, no internet, no build step.
 
 - **drag** — orbit the camera (fast and loose)
 - **scroll** — zoom
-- **double-click** — tour: Saturn → Pan → Daphnis → Atlas → back
+- **double-click** — tour: Saturn → Pan → Atlas → back
 - **← / →** — time warp (up to a day per second, forwards or backwards);
   **space** snaps back to right now
 - **m** (or click the ♪) — toggle the soundtrack ("ZF Archa 97")
-- URL options: `?view=pan` / `daphnis` / `atlas` to start there; `?silent`
-  for no audio
+- URL options: `?view=pan` / `atlas` to start there; `?silent` for no audio
 - there may or may not be someone jogging around Pan if you fly in close
 
 ## How it knows where the moons are
@@ -31,15 +31,14 @@ to Cassini spacecraft tracking):
 | moon | epoch (TDB) | longitude | mean motion | orbit radius |
 |---|---|---|---|---|
 | Pan | 2026-07-07 | 284.90298° | 626.03174°/day (13.80 h) | 133,584 km — Encke Gap |
-| Daphnis | 2018-01-16 | 131.47222° | 605.97847°/day (14.26 h) | 136,505 km — Keeler Gap |
 | Atlas | 2026-07-07 | 306.90021° | 599.37759°/day (14.41 h) | 137,545 km — past the A ring |
 
 `longitude(now) = longitude(epoch) + speed × time since epoch`, with the
-69.184 s UTC→TDB clock correction applied. Pan and Atlas are checked against
+69.184 s UTC→TDB clock correction applied. Both moons are checked against
 independent Horizons samples 6.5 years apart — agreement better than 0.001°.
-Daphnis' NASA ephemeris ends with the Cassini mission (Jan 2018), so its
-position today is an extrapolation from an 8-year baseline: expect a possible
-few degrees of drift for that one.
+(`orbit.js` also carries constants for Daphnis, the Keeler Gap moon, but it
+isn't drawn: NASA's ephemeris for it ended with the Cassini mission in 2018,
+so its position today can't be stated exactly.)
 
 The Sun's true direction from Saturn (from Horizons) drives the lighting, so
 the shadow Saturn throws across its rings is the real one for today.

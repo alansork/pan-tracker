@@ -94,7 +94,7 @@ scene.add(new THREE.PointLight(0xc9b990, 0.4, 0, 0));   // glows from Saturn's c
 // Procedural cloud bands painted onto a canvas: soft latitude stripes in
 // Cassini-photo colors, wobbled with noise, plus a few pale storm ovals.
 function makeSaturnTexture() {
-  const w = 2048, h = 1024;
+  const w = 3072, h = 1536;
   const canvas = document.createElement("canvas");
   canvas.width = w; canvas.height = h;
   const ctx = canvas.getContext("2d");
@@ -153,10 +153,13 @@ function makeSaturnTexture() {
       if (v < hexV) hex = 0.90;                                   // inside: darker
       const dEdge = Math.abs(v - hexV);
       if (dEdge < 0.0035) hex *= 0.82;                            // the jet itself
+      // A breath of per-pixel grain so the clouds read as haze, not gradient.
+      const grain =
+        1 + 0.016 * ((((Math.sin(x * 12.9898 + y * 78.233) * 43758.5453) % 1 + 1) % 1) - 0.5);
       const k = (y * w + x) * 4;
-      img.data[k]     = Math.min(255, base[0] * bands * s * hex);
-      img.data[k + 1] = Math.min(255, base[1] * bands * s * hex);
-      img.data[k + 2] = Math.min(255, base[2] * bands * s * 0.985 * (hex < 1 ? hex * 1.04 : 1));
+      img.data[k]     = Math.min(255, base[0] * bands * s * hex * grain);
+      img.data[k + 1] = Math.min(255, base[1] * bands * s * hex * grain);
+      img.data[k + 2] = Math.min(255, base[2] * bands * s * 0.985 * (hex < 1 ? hex * 1.04 : 1) * grain);
       img.data[k + 3] = 255;
     }
   }
@@ -185,7 +188,7 @@ function makeSaturnTexture() {
 }
 
 const saturn = new THREE.Mesh(
-  new THREE.SphereGeometry(SATURN_EQ_RADIUS, 128, 96),
+  new THREE.SphereGeometry(SATURN_EQ_RADIUS, 224, 160),
   new THREE.MeshStandardMaterial({
     map: makeSaturnTexture(),
     roughness: 0.95,
@@ -335,13 +338,69 @@ function makeNoise2DWrap(seed, gw, gh) {
   };
 }
 
+// A close-up surface for the moons: fine dust mottling plus soft, shallow
+// crater dimples, painted at high resolution so nothing looks pixelated.
+function makeMoonTexture(seed) {
+  const w = 2048, h = 1024;
+  const canvas = document.createElement("canvas");
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  const g1 = makeNoise2DWrap(seed, 20, 10);      // broad tonal patches
+  const g2 = makeNoise2DWrap(seed + 1, 90, 45);  // medium mottling
+  const g3 = makeNoise2DWrap(seed + 2, 340, 170);// fine dusty grain
+
+  const img = ctx.createImageData(w, h);
+  for (let y = 0; y < h; y++) {
+    const v = y / (h - 1);
+    for (let x = 0; x < w; x++) {
+      const u = x / w;
+      const t =
+        0.45 * g1(u, v) + 0.33 * g2(u, v) + 0.22 * g3(u * 2 % 1, v);
+      const grain = ((Math.sin(x * 12.9898 + y * 78.233) * 43758.5453) % 1 + 1) % 1;
+      const base = 208 + 52 * (t - 0.5) * 2 + 6 * (grain - 0.5);
+      const k = (y * w + x) * 4;
+      img.data[k]     = Math.min(255, base);
+      img.data[k + 1] = Math.min(255, base * 0.99);
+      img.data[k + 2] = Math.min(255, base * 0.965);
+      img.data[k + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+
+  // Soft, shallow crater dimples — these moons are dust-blanketed, so the
+  // craters read as faint circular shading, not sharp holes.
+  const rand = mulberry32(seed + 9);
+  for (let i = 0; i < 70; i++) {
+    const cx = rand() * w, cy = h * (0.12 + rand() * 0.76);
+    const cr = 3 + rand() * 26;
+    let g = ctx.createRadialGradient(cx, cy, cr * 0.2, cx, cy, cr);
+    g.addColorStop(0, "rgba(70,64,58,0.16)");
+    g.addColorStop(0.75, "rgba(70,64,58,0.05)");
+    g.addColorStop(1, "rgba(70,64,58,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(cx, cy, cr, 0, Math.PI * 2); ctx.fill();
+    g = ctx.createRadialGradient(cx, cy, cr * 0.75, cx, cy, cr * 1.15);
+    g.addColorStop(0, "rgba(255,250,240,0)");
+    g.addColorStop(0.55, "rgba(255,250,240,0.10)");
+    g.addColorStop(1, "rgba(255,250,240,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(cx, cy, cr * 1.15, 0, Math.PI * 2); ctx.fill();
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.encoding = THREE.sRGBEncoding;
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  return tex;
+}
+
 function makeMoonGeometry(def, seed) {
   const R = def.radiiKm;
-  const geo = new THREE.SphereGeometry(1, 160, 120);
+  const geo = new THREE.SphereGeometry(1, 224, 168);   // dense = smooth silhouette
   const pos = geo.attributes.position;
   const ridgeNoise = makeNoise2DWrap(seed, 24, 1);      // unevenness of the ridge
   const hills = makeNoise2DWrap(seed + 1, 10, 6);       // broad, soft terrain
   const detail = makeNoise2DWrap(seed + 2, 36, 18);     // finer texture
+  const detail2 = makeNoise2DWrap(seed + 3, 100, 50);   // finest surface shimmer
   const colors = new Float32Array(pos.count * 3);
   const lumpScale = R.long / 17.2;   // smaller moons get shallower terrain
 
@@ -366,7 +425,8 @@ function makeMoonGeometry(def, seed) {
     // poles so the mesh seam stays sealed. These moons are smooth — they
     // are coated in fine ring dust — so no sharp features.
     const lump =
-      (0.55 * (hills(u, v) - 0.5) + 0.25 * (detail(u, v) - 0.5)) *
+      (0.55 * (hills(u, v) - 0.5) + 0.25 * (detail(u, v) - 0.5) +
+       0.10 * (detail2(u, v) - 0.5)) *
       Math.cos(lat) * lumpScale;
 
     const r = rEllipsoid + ridge + lump;
@@ -390,6 +450,7 @@ function makeMoonMesh(def, seed) {
   const mesh = new THREE.Mesh(
     makeMoonGeometry(def, seed),
     new THREE.MeshStandardMaterial({
+      map: makeMoonTexture(seed + 7),
       color: 0xf4efe6,
       vertexColors: true,
       roughness: 0.98,
@@ -405,13 +466,37 @@ function makeMoonMesh(def, seed) {
   return mesh;
 }
 
-// All three ring-region shepherd moons, each at its true position.
+// Two ravioli: Pan and Atlas, each at its true position. (Daphnis' orbit
+// data is still in orbit.js, but NASA's ephemeris for it ended with the
+// Cassini mission, so we keep the scene to the two moons we know exactly.)
 const moons = {
   pan: makeMoonMesh(Orbit.MOONS.pan, 51),
-  daphnis: makeMoonMesh(Orbit.MOONS.daphnis, 81),
   atlas: makeMoonMesh(Orbit.MOONS.atlas, 111),
 };
 const pan = moons.pan;   // the headline moon
+
+// A whisper-quiet floating name beside each moon, so you know who is who.
+function makeMoonLabel(text) {
+  const c = document.createElement("canvas");
+  c.width = 512; c.height = 128;
+  const ctx = c.getContext("2d");
+  ctx.font = "300 44px 'SF Mono', Menlo, monospace";
+  ctx.textAlign = "center";
+  ctx.fillStyle = "rgba(255,255,255,0.9)";
+  ctx.fillText(text, 256, 76);
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: new THREE.CanvasTexture(c),
+    transparent: true,
+    depthWrite: false,
+    depthTest: false,   // the name stays readable even behind the rings
+  }));
+  return sprite;
+}
+const labels = {};
+for (const key of Object.keys(moons)) {
+  labels[key] = makeMoonLabel(key);
+  scene.add(labels[key]);
+}
 
 // A soft halo so you can find the little one from far away.
 // It quietly fades out as you get close.
@@ -560,10 +645,9 @@ scene.add(makeStars());
 const TOUR = {
   saturn: { radius: 330, minR: 75 },
   pan: { radius: 7, minR: 1.7 },
-  daphnis: { radius: 2.2, minR: 0.5 },
   atlas: { radius: 8, minR: 2.0 },
 };
-const TOUR_ORDER = ["saturn", "pan", "daphnis", "atlas"];
+const TOUR_ORDER = ["saturn", "pan", "atlas"];
 
 // Open with ?view=pan (or daphnis / atlas) to start there (bookmarkable).
 const startView = new URLSearchParams(location.search).get("view");
@@ -654,7 +738,6 @@ updateMusicEl();
 
 // --- HUD -------------------------------------------------------------------------
 
-const hudName = document.getElementById("hud-name");
 const hudTime = document.getElementById("hud-time");
 const hudLon = document.getElementById("hud-lon");
 const hint = document.getElementById("hint");
@@ -662,20 +745,16 @@ setTimeout(() => hint.classList.add("faded"), 12000);
 
 const MONTHS = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
 function updateHud(now, jd) {
-  // Report on whichever moon you're visiting (Pan when gazing at Saturn).
-  const key = view.mode === "saturn" ? "pan" : view.mode;
-  const def = Orbit.MOONS[key];
   const rate = WARP_LEVELS[warp.idx];
   const p = (n) => String(n).padStart(2, "0");
-  hudName.textContent = def.title;
   hudTime.textContent =
     `${p(now.getDate())} ${MONTHS[now.getMonth()]} ${now.getFullYear()} ` +
     `${p(now.getHours())}:${p(now.getMinutes())}:${p(now.getSeconds())}` +
     (isLive() ? "" : `  ·  warp ×${rate > 0 ? rate : "−" + -rate}`);
   hudLon.textContent =
-    `longitude ${Orbit.moonLongitudeDeg(def, jd).toFixed(2)}° · ` +
-    `lap ${(def.periodDays * 24).toFixed(2)} h · ` +
-    `shown ×${PAN_VISUAL_SCALE}, truly ${Math.round(def.radiiKm.long * 2)} km`;
+    `pan ${Orbit.moonLongitudeDeg(Orbit.MOONS.pan, jd).toFixed(1)}° · ` +
+    `atlas ${Orbit.moonLongitudeDeg(Orbit.MOONS.atlas, jd).toFixed(1)}° · ` +
+    `shown ×${PAN_VISUAL_SCALE}`;
 }
 
 // --- Main loop ---------------------------------------------------------------------
@@ -699,6 +778,13 @@ function animate() {
     const def = Orbit.MOONS[key];
     mesh.position.copy(toWorld(Orbit.moonPositionKm(def, jd)));
     mesh.rotation.y = Orbit.moonLongitudeDeg(def, jd) * Math.PI / 180 + Math.PI;
+    // The name floats just above its moon, sized for the current distance.
+    const label = labels[key];
+    const d = camera.position.distanceTo(mesh.position);
+    label.position.copy(mesh.position);
+    label.position.y += def.radiiKm.polar * KM * PAN_VISUAL_SCALE + d * 0.022;
+    label.scale.set(d * 0.055, d * 0.014, 1);
+    label.material.opacity = 0.4 * smoothstep(2.5, 8, d);
   }
 
   // Halo hugs Pan, sized for the current distance, fading when you're close.
