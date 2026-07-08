@@ -16,6 +16,8 @@ skips the landing entirely.) Music starts as early as the browser's autoplay
 rules allow — at the latest, on your first click. No install, no internet, no
 build step.
 
+- **click a moon's name** — fly straight to it (at true scale the floating
+  names are how you find a 34 km moon beside a 120,536 km planet)
 - **drag** — orbit the camera (fast and loose)
 - **scroll** — zoom
 - **double-click** — tour: Saturn → Pan → Atlas → back
@@ -50,16 +52,20 @@ the shadow Saturn throws across its rings is the real one for today.
 ## What's real, what's not
 
 - **Real:** each moon's position and speed, the ring dimensions (C, B, A
-  rings, Cassini Division, Encke Gap, Keeler Gap, F ring, all in km),
-  Saturn's size, squashed shape, 10.56 h spin and north-polar hexagon, the
-  moons' measured ellipsoid shapes with their equatorial ridges, the Sun's
-  direction (which drives the lighting and ring shadows), warm Saturn-shine
-  on the moons' night sides.
-- **Artistic:** the moons are drawn ×60 their true size so they're visible at
-  all (34 km next to a 120,536 km planet is less than a pixel) — the corner
-  label says so. Cloud and ring textures are procedurally painted in
-  Cassini-photo colors, not photographs. The koala is not to scale. Koalas
-  cannot jog.
+  rings, Cassini Division, Encke Gap, Keeler Gap, F ring, all in km), the
+  planet's size, squashed shape and 10.56 h spin, the moons' measured
+  ellipsoid shapes with their equatorial ridges — **at true scale**,
+  including the true (enormous) size difference between the planet and its
+  34 km moons — the Sun's direction (which drives the lighting and ring
+  shadows), and warm planet-shine on the moons' night sides.
+- **Photographic:** the planet's cloud map is real spacecraft imagery
+  (texture by [Solar System Scope](https://www.solarsystemscope.com/textures/),
+  CC BY 4.0) — chosen by sorkthropic for its Hubble-Jupiter drama, Great Red
+  Spot and all, so yes: the planet wears Jupiter's actual clouds. A painted
+  procedural cloud layer remains as instant fallback while the photo loads
+  (and for file:// opens, where browsers keep image pixels away from WebGL).
+- **Artistic:** the moons' surface texture is procedurally painted (no probe
+  has mapped them fully). The koala is not to scale. Koalas cannot jog.
 
 ## Tests
 

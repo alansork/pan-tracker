@@ -13,7 +13,9 @@
 /* global THREE, Orbit */
 
 const KM = 0.001;                 // km -> scene units
-const PAN_VISUAL_SCALE = 60;      // Pan drawn 60x its true size (see above)
+const PAN_VISUAL_SCALE = 1;       // TRUE scale: Pan really is a 34 km speck
+                                  // beside a 120,536 km planet — click the
+                                  // moon names to fly in and find them
 const SATURN_EQ_RADIUS = 60268 * KM;
 const SATURN_FLATTENING = 54364 / 60268;   // Saturn is visibly squashed
 const SATURN_DAY_HOURS = 10.56;
@@ -53,7 +55,9 @@ function smoothstep(a, b, x) {
 
 // --- Renderer / scene / camera ----------------------------------------------
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+// logarithmicDepthBuffer: the camera must work from 300,000 km out to 30 km
+// above a moon — a huge depth range that a plain z-buffer can't hold.
+const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.outputEncoding = THREE.sRGBEncoding;
@@ -65,7 +69,7 @@ document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(
-  45, window.innerWidth / window.innerHeight, 0.05, 20000);
+  45, window.innerWidth / window.innerHeight, 0.002, 20000);
 
 // --- Sunlight (real direction from orbit.js) --------------------------------
 
@@ -269,6 +273,41 @@ const atmosphere = new THREE.Mesh(
 );
 atmosphere.scale.y = SATURN_FLATTENING;
 scene.add(atmosphere);
+
+// The planet's clouds, upgraded to real photography: a cylindrical map
+// derived from actual spacecraft imagery (Solar System Scope, CC BY 4.0),
+// per sorkthropic's Hubble-photo reference. The painted procedural clouds
+// above stay as the instant fallback — and for file:// opens, where
+// browsers refuse to hand local image pixels to WebGL. Once the photo is
+// in, the planet turns so its Great Red Spot faces the camera.
+const cloudPhoto = new Image();
+cloudPhoto.onload = () => {
+  const c = document.createElement("canvas");
+  c.width = cloudPhoto.width; c.height = cloudPhoto.height;
+  const cx = c.getContext("2d");
+  cx.drawImage(cloudPhoto, 0, 0);
+  try { cx.getImageData(0, 0, 1, 1); } catch (e) {
+    console.log("cloud photo tainted; keeping painted clouds");
+    return;
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.encoding = THREE.sRGBEncoding;
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  saturn.material.map = tex;
+  saturn.material.needsUpdate = true;
+  saturnPhase = phaseToFace(0.365);   // the photo's Great Red Spot longitude
+  console.log("cloud photo applied");
+};
+// One quiet retry if the first fetch is interrupted.
+let cloudPhotoRetried = false;
+cloudPhoto.onerror = () => {
+  console.log("cloud photo failed to load" + (cloudPhotoRetried ? "" : "; retrying"));
+  if (!cloudPhotoRetried) {
+    cloudPhotoRetried = true;
+    setTimeout(() => { cloudPhoto.src = "assets/jupiter-8k.jpg?retry"; }, 2500);
+  }
+};
+cloudPhoto.src = "assets/jupiter-8k.jpg";
 
 // --- The rings ----------------------------------------------------------------
 // Real radial structure, in km from Saturn's center:
@@ -552,9 +591,10 @@ function makeMoonMesh(def, seed) {
     new THREE.MeshStandardMaterial({
       map: surface,
       // The same texture as a bump map: craters and grooves catch the
-      // sunlight in real relief when you fly in close.
+      // sunlight in real relief when you fly in close. The strength scales
+      // with the moon's rendered size (in units, a true-scale moon is tiny).
       bumpMap: surface,
-      bumpScale: 0.012,
+      bumpScale: 0.0002 * PAN_VISUAL_SCALE,
       color: 0xf4efe6,
       vertexColors: true,
       roughness: 0.98,
@@ -599,6 +639,8 @@ function makeMoonLabel(text) {
 const labels = {};
 for (const key of Object.keys(moons)) {
   labels[key] = makeMoonLabel(key);
+  labels[key].userData.moon = key;
+  moons[key].userData.moon = key;
   scene.add(labels[key]);
 }
 
@@ -656,7 +698,7 @@ function makeKoalaSprite() {
     depthWrite: false,
   }));
   // Sized in km because it rides inside Pan's mesh (which is scaled to units).
-  sprite.scale.set(10, 5, 1);
+  sprite.scale.set(3.5, 1.75, 1);
   return sprite;
 }
 const koala = makeKoalaSprite();
@@ -665,13 +707,13 @@ pan.add(koala);
 let koalaLap = 0;   // how far around Pan's equator the koala has jogged
 
 function updateKoala(dt, nowMs, camDistToPan) {
-  koala.visible = camDistToPan < 30;   // a secret for close visitors only
+  koala.visible = camDistToPan < 0.5;  // a secret for close visitors only
   if (!koala.visible) return;
   koalaLap += dt * 0.3;                // one lap of Pan every ~20 s
   const R = Orbit.PAN.radiiKm;
   const rEq = 1 / Math.hypot(Math.cos(koalaLap) / R.long, Math.sin(koalaLap) / R.mid);
-  const hop = 0.9 * Math.abs(Math.sin(nowMs * 0.006));       // happy little hops
-  const r = rEq + Orbit.PAN.ridgeKm + 2.4 + hop;
+  const hop = 0.3 * Math.abs(Math.sin(nowMs * 0.006));       // happy little hops
+  const r = rEq + Orbit.PAN.ridgeKm + 1.0 + hop;
   koala.position.set(Math.cos(koalaLap) * r, 0, Math.sin(koalaLap) * r);
 }
 
@@ -746,24 +788,28 @@ scene.add(makeStars());
 
 // Each stop on the double-click tour: what to look at, how close to swoop in,
 // and how close the scroll wheel may go.
+// True-scale close-ups: the camera parks ~120-140 km from a ~35 km moon.
 const TOUR = {
   saturn: { radius: 330, minR: 75 },
-  pan: { radius: 7, minR: 1.7 },
-  atlas: { radius: 8, minR: 2.0 },
+  pan: { radius: 0.12, minR: 0.035 },
+  atlas: { radius: 0.14, minR: 0.04 },
 };
 const TOUR_ORDER = ["saturn", "pan", "atlas"];
 
-// Open with ?view=pan (or daphnis / atlas) to start there (bookmarkable).
-const startView = new URLSearchParams(location.search).get("view");
+// Open with ?view=pan (or atlas) to start there (bookmarkable).
+// &r=<units> overrides the starting camera distance (handy for debugging).
+const startParams = new URLSearchParams(location.search);
+const startView = startParams.get("view");
 const startMode = TOUR[startView] ? startView : "saturn";
+const startRadius = parseFloat(startParams.get("r")) || TOUR[startMode].radius;
 const view = {
   mode: startMode,
   theta: -0.55,                         // horizontal angle — starts sun-side,
                                         // so Saturn opens nearly fully lit
   phi: 1.83,                           // vertical angle (slightly below the
                                         // rings — that's the sunlit side now)
-  radius: TOUR[startMode].radius,
-  desiredRadius: TOUR[startMode].radius,
+  radius: startRadius,
+  desiredRadius: startRadius,
   target: new THREE.Vector3(0, 0, 0),   // what the camera looks at
   lastPointer: null,
   lastInteraction: performance.now(),
@@ -798,6 +844,26 @@ renderer.domElement.addEventListener("dblclick", () => {
   const next = TOUR_ORDER[(TOUR_ORDER.indexOf(view.mode) + 1) % TOUR_ORDER.length];
   view.mode = next;
   view.desiredRadius = TOUR[next].radius;
+  view.lastInteraction = performance.now();
+});
+
+// Click a moon's name (or the moon itself) to fly straight to it.
+const raycaster = new THREE.Raycaster();
+let pressAt = null;
+renderer.domElement.addEventListener("pointerdown", (e) => {
+  pressAt = { x: e.clientX, y: e.clientY };
+});
+renderer.domElement.addEventListener("click", (e) => {
+  if (pressAt && Math.hypot(e.clientX - pressAt.x, e.clientY - pressAt.y) > 6) return; // that was a drag
+  raycaster.setFromCamera(new THREE.Vector2(
+    (e.clientX / window.innerWidth) * 2 - 1,
+    -(e.clientY / window.innerHeight) * 2 + 1), camera);
+  const hit = raycaster.intersectObjects(
+    [labels.pan, labels.atlas, moons.pan, moons.atlas], false)[0];
+  if (!hit) return;
+  const key = hit.object.userData.moon;
+  view.mode = key;
+  view.desiredRadius = TOUR[key].radius;
   view.lastInteraction = performance.now();
 });
 
@@ -877,23 +943,24 @@ function updateHud(now, jd) {
   hudLon.textContent =
     `pan ${Orbit.moonLongitudeDeg(Orbit.MOONS.pan, jd).toFixed(1)}° · ` +
     `atlas ${Orbit.moonLongitudeDeg(Orbit.MOONS.atlas, jd).toFixed(1)}° · ` +
-    `shown ×${PAN_VISUAL_SCALE}`;
+    `true scale`;
 }
 
 // --- Main loop ---------------------------------------------------------------------
 
-// Saturn's rotational phase is arbitrary (it's a gas giant — there is no
-// fixed surface meridian to be faithful to), so we choose it once at startup
-// so that the Great White Spot faces the camera when the app opens, on the
-// sunlit side. From then on it rotates at the true 10.56 h rate.
-const saturnPhase = (() => {
+// The planet's rotational phase is arbitrary (a gas giant has no fixed
+// surface meridian to be faithful to), so we choose it so that the big
+// storm faces the camera when the app opens, dead center on the sunlit
+// disk. From then on it rotates at the true 10.56 h rate.
+function phaseToFace(stormU) {
   const jd0 = Orbit.jdTdbFromDate(new Date());
   const spin0 = ((jd0 - Orbit.PAN.epochJdTdb) * 24 / SATURN_DAY_HOURS) * Math.PI * 2;
   // Texture u maps to azimuth (PI - 2*PI*u); rotation.y subtracts from it.
-  const stormWorldAngle = Math.PI - 2 * Math.PI * 0.33;   // texture u≈0.33 (head+wake)
-  const faceAngle = -0.55;  // dead center of the sunlit disk at startup
+  const stormWorldAngle = Math.PI - 2 * Math.PI * stormU;
+  const faceAngle = -0.55;
   return stormWorldAngle - faceAngle - spin0;
-})();
+}
+let saturnPhase = phaseToFace(0.33);   // the painted storm's longitude
 
 let lastFrame = performance.now();
 function animate() {
@@ -914,13 +981,15 @@ function animate() {
     const def = Orbit.MOONS[key];
     mesh.position.copy(toWorld(Orbit.moonPositionKm(def, jd)));
     mesh.rotation.y = Orbit.moonLongitudeDeg(def, jd) * Math.PI / 180 + Math.PI;
-    // The name floats just above its moon, sized for the current distance.
+    // The name floats above its moon — big and readable from any distance
+    // (at true scale it's the only way to find a 34 km speck), fading away
+    // once you've flown in close.
     const label = labels[key];
     const d = camera.position.distanceTo(mesh.position);
     label.position.copy(mesh.position);
-    label.position.y += def.radiiKm.polar * KM * PAN_VISUAL_SCALE + d * 0.022;
-    label.scale.set(d * 0.055, d * 0.014, 1);
-    label.material.opacity = 0.4 * smoothstep(2.5, 8, d);
+    label.position.y += def.radiiKm.polar * KM * PAN_VISUAL_SCALE + d * 0.03;
+    label.scale.set(d * 0.09, d * 0.0225, 1);
+    label.material.opacity = 0.55 * smoothstep(0.18, 0.9, d);
   }
 
   // Halo hugs Pan, sized for the current distance, fading when you're close.
@@ -943,6 +1012,11 @@ function animate() {
     view.mode === "saturn" ? new THREE.Vector3(0, 0, 0) : moons[view.mode].position;
   const glide = 1 - Math.exp(-dt * 7);
   view.target.lerp(targetGoal, glide);
+  // Once we're near a moon, lock on hard — it is a moving target (Pan
+  // covers ~17 km every second) and any lag leaves it off-frame.
+  if (view.mode !== "saturn" && view.target.distanceTo(targetGoal) < 0.5) {
+    view.target.copy(targetGoal);
+  }
   view.radius += (view.desiredRadius - view.radius) * glide;
   if (nowMs - view.lastInteraction > 10000) view.theta += dt * 0.012; // idle drift
 
