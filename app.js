@@ -180,23 +180,43 @@ function makeSaturnTexture() {
   // the red spot; Saturn answers with this, last seen erupting 2010-11):
   // a bright boiling head with a turbulent wake trailing east around the
   // northern mid-latitudes.
+  // The storm rides at ~33°S — Cassini's "Storm Alley", the latitude where
+  // Saturn's lightning storms actually cluster (and the hemisphere the app's
+  // camera sees best).
   const srand = mulberry32(3);
-  const stormV = 0.325, headU = 0.26;
-  for (let i = 0; i < 46; i++) {
-    const t = i / 46;
-    const su = (headU + t * 0.45 + 0.012 * (srand() - 0.5)) % 1;
-    const sv = stormV + 0.016 * (srand() - 0.5) * (0.3 + t);
-    const rx = (i === 0 ? 46 : 26 * (1 - t) + 6) * (w / 3072);
-    const ry = rx * (0.30 + 0.1 * srand());
-    const a = i === 0 ? 0.5 : 0.24 * (1 - t) + 0.03;
+  const stormV = 0.67, headU = 0.30;
+  function oval(su, sv, rx, ry, rgb, a) {
     const gg = ctx.createRadialGradient(su * w, sv * h, 0, su * w, sv * h, rx);
-    gg.addColorStop(0, `rgba(252,248,238,${a})`);
-    gg.addColorStop(1, "rgba(252,248,238,0)");
+    gg.addColorStop(0, `rgba(${rgb},${a})`);
+    gg.addColorStop(0.65, `rgba(${rgb},${a * 0.45})`);
+    gg.addColorStop(1, `rgba(${rgb},0)`);
     ctx.fillStyle = gg;
     ctx.save();
     ctx.translate(su * w, sv * h); ctx.scale(1, ry / rx); ctx.translate(-su * w, -sv * h);
     ctx.beginPath(); ctx.arc(su * w, sv * h, rx, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
+  }
+  // Dark red-brown collar around the head, so the storm pops off the bands...
+  oval(headU, stormV, 400 * (w / 3072), 150 * (w / 3072), "104,56,40", 0.55);
+  // ...then the boiling bright head itself, in three layers.
+  oval(headU, stormV, 280 * (w / 3072), 105 * (w / 3072), "255,252,244", 0.9);
+  oval(headU - 0.02, stormV - 0.008, 150 * (w / 3072), 62 * (w / 3072), "255,255,252", 0.95);
+  oval(headU + 0.03, stormV + 0.01, 120 * (w / 3072), 48 * (w / 3072), "248,240,225", 0.7);
+  // The turbulent wake: alternating bright clumps and red-brown eddies
+  // curling east for half the planet, scattering as they age.
+  for (let i = 0; i < 64; i++) {
+    const t = i / 64;
+    const su = (headU + 0.08 + t * 0.5 + 0.016 * (srand() - 0.5)) % 1;
+    const sv = stormV + 0.028 * (srand() - 0.5) * (0.35 + t);
+    const rx = (85 * (1 - t) + 20) * (w / 3072) * (0.7 + 0.6 * srand());
+    const ry = rx * (0.30 + 0.12 * srand());
+    if (srand() < 0.6) oval(su, sv, rx, ry, "252,248,238", 0.4 * (1 - t) + 0.06);
+    else oval(su, sv, rx * 0.9, ry * 0.8, "112,62,44", 0.30 * (1 - t) + 0.05);
+  }
+  // A few lone red-brown ovals in the northern temperate band for balance.
+  for (let i = 0; i < 5; i++) {
+    oval(srand(), 0.24 + srand() * 0.12, (14 + srand() * 22) * (w / 3072),
+         (5 + srand() * 8) * (w / 3072), "116,66,46", 0.16 + srand() * 0.10);
   }
 
   // Pale storm ovals in the temperate bands — more of them, varied sizes.
@@ -738,7 +758,8 @@ const startView = new URLSearchParams(location.search).get("view");
 const startMode = TOUR[startView] ? startView : "saturn";
 const view = {
   mode: startMode,
-  theta: 0.9,                           // horizontal angle
+  theta: -0.55,                         // horizontal angle — starts sun-side,
+                                        // so Saturn opens nearly fully lit
   phi: 1.83,                           // vertical angle (slightly below the
                                         // rings — that's the sunlit side now)
   radius: TOUR[startMode].radius,
@@ -822,8 +843,21 @@ function toggleMusic() {
 }
 musicEl.addEventListener("click", (e) => { e.stopPropagation(); toggleMusic(); });
 window.addEventListener("pointerdown", tryPlayMusic);
-tryPlayMusic();
+window.addEventListener("keydown", tryPlayMusic);
+tryPlayMusic();   // start immediately if the browser allows autoplay
 updateMusicEl();
+
+// The landing veil (index.html only): the scene and music are already live
+// behind it; the enter button just lifts the veil — and, being a click,
+// guarantees the soundtrack starts even in strict browsers.
+const landing = document.getElementById("landing");
+if (landing) {
+  document.getElementById("enterBtn").addEventListener("click", () => {
+    tryPlayMusic();
+    landing.classList.add("lifted");
+    view.lastInteraction = performance.now();
+  });
+}
 
 // --- HUD -------------------------------------------------------------------------
 
@@ -847,6 +881,19 @@ function updateHud(now, jd) {
 }
 
 // --- Main loop ---------------------------------------------------------------------
+
+// Saturn's rotational phase is arbitrary (it's a gas giant — there is no
+// fixed surface meridian to be faithful to), so we choose it once at startup
+// so that the Great White Spot faces the camera when the app opens, on the
+// sunlit side. From then on it rotates at the true 10.56 h rate.
+const saturnPhase = (() => {
+  const jd0 = Orbit.jdTdbFromDate(new Date());
+  const spin0 = ((jd0 - Orbit.PAN.epochJdTdb) * 24 / SATURN_DAY_HOURS) * Math.PI * 2;
+  // Texture u maps to azimuth (PI - 2*PI*u); rotation.y subtracts from it.
+  const stormWorldAngle = Math.PI - 2 * Math.PI * 0.33;   // texture u≈0.33 (head+wake)
+  const faceAngle = -0.55;  // dead center of the sunlit disk at startup
+  return stormWorldAngle - faceAngle - spin0;
+})();
 
 let lastFrame = performance.now();
 function animate() {
@@ -888,7 +935,8 @@ function animate() {
   // Sun where it really is; Saturn spins at its real 10.56 h rate.
   const sunDir = toWorld(Orbit.sunDirection(jd)).normalize();
   sunLight.position.copy(sunDir.multiplyScalar(900));
-  saturn.rotation.y = ((jd - Orbit.PAN.epochJdTdb) * 24 / SATURN_DAY_HOURS) * Math.PI * 2;
+  saturn.rotation.y =
+    saturnPhase + ((jd - Orbit.PAN.epochJdTdb) * 24 / SATURN_DAY_HOURS) * Math.PI * 2;
 
   // Camera: smooth glide toward where it wants to be.
   const targetGoal =

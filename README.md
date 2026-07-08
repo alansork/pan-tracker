@@ -10,7 +10,11 @@ Built by **sorkthropic**.
 
 ## Run it
 
-Open `index.html` in any browser (the landing page — the button takes you to `tracker.html`, the animation itself). No install, no internet, no build step.
+Open `index.html` in any browser — the animation and soundtrack are already
+running behind the landing veil, and the enter button lifts it. (`tracker.html`
+skips the landing entirely.) Music starts as early as the browser's autoplay
+rules allow — at the latest, on your first click. No install, no internet, no
+build step.
 
 - **drag** — orbit the camera (fast and loose)
 - **scroll** — zoom
