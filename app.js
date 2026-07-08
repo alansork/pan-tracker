@@ -127,25 +127,33 @@ function makeSaturnTexture() {
   const streak = makeNoise1D(37, 256);    // horizontal streakiness
   const streak2 = makeNoise1D(41, 640);   // finer turbulence along the bands
 
+  // Domain warping: turbulent 2D noise nudges the latitude before every
+  // band lookup, so band edges wave, curl and shear into each other like
+  // real zonal flows instead of running as ruler-straight stripes.
+  const swirl = makeNoise2DWrap(61, 12, 6);      // large slow meanders
+  const swirl2 = makeNoise2DWrap(62, 90, 45);    // small eddies at band edges
+
   const img = ctx.createImageData(w, h);
   for (let y = 0; y < h; y++) {
     const v = y / (h - 1);
-    // Band brightness varies with latitude noise -> visible stripe structure.
-    const bands =
-      0.92 +
-      0.10 * (wobble(v) - 0.5) * 2 +
-      0.06 * (wobble2(v) - 0.5) * 2 +
-      0.03 * (wobble3(v) - 0.5) * 2 +
-      0.035 * Math.sin(v * 145 + wobble(v) * 9) +
-      0.018 * Math.sin(v * 470 + wobble3(v) * 14);
-    const base = bandColor(v);
     for (let x = 0; x < w; x++) {
       const u = x / w;
+      const vw = Math.min(1, Math.max(0,
+        v + 0.008 * (swirl(u, v) - 0.5) + 0.0025 * (swirl2(u, v) - 0.5)));
+      // Band brightness varies with (warped) latitude -> stripe structure.
+      const bands =
+        0.92 +
+        0.10 * (wobble(vw) - 0.5) * 2 +
+        0.06 * (wobble2(vw) - 0.5) * 2 +
+        0.03 * (wobble3(vw) - 0.5) * 2 +
+        0.035 * Math.sin(vw * 145 + wobble(vw) * 9) +
+        0.018 * Math.sin(vw * 470 + wobble3(vw) * 14);
+      const base = bandColor(vw);
       // Gentle along-band streaks + finer turbulence, a few % amplitude.
       const s =
         1 +
-        0.022 * (streak(((u) + wobble(v)) % 1) - 0.5) * 2 +
-        0.012 * (streak2(((u * 3) % 1 + wobble2(v)) % 1) - 0.5) * 2;
+        0.022 * (streak(((u) + wobble(vw)) % 1) - 0.5) * 2 +
+        0.012 * (streak2(((u * 3) % 1 + wobble2(vw)) % 1) - 0.5) * 2;
       // The famous north-polar hexagon: a jet stream whose latitude
       // wobbles with cos(6·longitude); slightly darker inside.
       const hexV = 0.052 + 0.007 * Math.cos(6 * 2 * Math.PI * u);
@@ -153,6 +161,9 @@ function makeSaturnTexture() {
       if (v < hexV) hex = 0.90;                                   // inside: darker
       const dEdge = Math.abs(v - hexV);
       if (dEdge < 0.0035) hex *= 0.82;                            // the jet itself
+      // Dark cyclone eyes sitting on both poles, like in Cassini's views.
+      if (v < 0.012) hex *= Math.min(1, 0.72 + 24 * v);
+      if (v > 0.988) hex *= Math.min(1, 0.72 + 24 * (1 - v));
       // A breath of per-pixel grain so the clouds read as haze, not gradient.
       const grain =
         1 + 0.016 * ((((Math.sin(x * 12.9898 + y * 78.233) * 43758.5453) % 1 + 1) % 1) - 0.5);
@@ -164,6 +175,29 @@ function makeSaturnTexture() {
     }
   }
   ctx.putImageData(img, 0, 0);
+
+  // The Great White Spot — Saturn's own recurring mega-storm (Jupiter has
+  // the red spot; Saturn answers with this, last seen erupting 2010-11):
+  // a bright boiling head with a turbulent wake trailing east around the
+  // northern mid-latitudes.
+  const srand = mulberry32(3);
+  const stormV = 0.325, headU = 0.26;
+  for (let i = 0; i < 46; i++) {
+    const t = i / 46;
+    const su = (headU + t * 0.45 + 0.012 * (srand() - 0.5)) % 1;
+    const sv = stormV + 0.016 * (srand() - 0.5) * (0.3 + t);
+    const rx = (i === 0 ? 46 : 26 * (1 - t) + 6) * (w / 3072);
+    const ry = rx * (0.30 + 0.1 * srand());
+    const a = i === 0 ? 0.5 : 0.24 * (1 - t) + 0.03;
+    const gg = ctx.createRadialGradient(su * w, sv * h, 0, su * w, sv * h, rx);
+    gg.addColorStop(0, `rgba(252,248,238,${a})`);
+    gg.addColorStop(1, "rgba(252,248,238,0)");
+    ctx.fillStyle = gg;
+    ctx.save();
+    ctx.translate(su * w, sv * h); ctx.scale(1, ry / rx); ctx.translate(-su * w, -sv * h);
+    ctx.beginPath(); ctx.arc(su * w, sv * h, rx, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
 
   // Pale storm ovals in the temperate bands — more of them, varied sizes.
   const rand = mulberry32(7);
@@ -199,6 +233,22 @@ saturn.scale.y = SATURN_FLATTENING;   // the famous squashed profile
 saturn.castShadow = true;
 saturn.receiveShadow = true;
 scene.add(saturn);
+
+// A whisper of atmospheric haze just past the limb, so the disk melts into
+// space softly instead of ending at a hard computer-graphics edge.
+const atmosphere = new THREE.Mesh(
+  new THREE.SphereGeometry(SATURN_EQ_RADIUS * 1.014, 96, 64),
+  new THREE.MeshBasicMaterial({
+    color: 0xe8d9ae,
+    transparent: true,
+    opacity: 0.14,
+    side: THREE.BackSide,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  })
+);
+atmosphere.scale.y = SATURN_FLATTENING;
+scene.add(atmosphere);
 
 // --- The rings ----------------------------------------------------------------
 // Real radial structure, in km from Saturn's center:
@@ -338,26 +388,33 @@ function makeNoise2DWrap(seed, gw, gh) {
   };
 }
 
-// A close-up surface for the moons: fine dust mottling plus soft, shallow
-// crater dimples, painted at high resolution so nothing looks pixelated.
+// A close-up surface for the moons: domain-warped dust mottling, a dense
+// crater record with bright ejecta, and striations along the equatorial
+// ridge — painted at high resolution so nothing looks pixelated. The same
+// canvas doubles as a bump map, so all of this catches real light.
 function makeMoonTexture(seed) {
-  const w = 2048, h = 1024;
+  const w = 3072, h = 1536;
   const canvas = document.createElement("canvas");
   canvas.width = w; canvas.height = h;
   const ctx = canvas.getContext("2d");
-  const g1 = makeNoise2DWrap(seed, 20, 10);      // broad tonal patches
-  const g2 = makeNoise2DWrap(seed + 1, 90, 45);  // medium mottling
-  const g3 = makeNoise2DWrap(seed + 2, 340, 170);// fine dusty grain
+  const g1 = makeNoise2DWrap(seed, 20, 10);       // broad tonal patches
+  const g2 = makeNoise2DWrap(seed + 1, 90, 45);   // medium mottling
+  const g3 = makeNoise2DWrap(seed + 2, 340, 170); // fine dusty grain
+  const warp = makeNoise2DWrap(seed + 3, 30, 15); // flow distortion
 
   const img = ctx.createImageData(w, h);
   for (let y = 0; y < h; y++) {
     const v = y / (h - 1);
     for (let x = 0; x < w; x++) {
       const u = x / w;
+      // Warped coordinates make the mottling drift and smear like real
+      // dust deposits instead of sitting in a neat noise grid.
+      const uw = (u + 0.03 * (warp(u, v) - 0.5) + 1) % 1;
+      const vv = Math.min(1, Math.max(0, v + 0.03 * (warp(uw, 1 - v) - 0.5)));
       const t =
-        0.45 * g1(u, v) + 0.33 * g2(u, v) + 0.22 * g3(u * 2 % 1, v);
+        0.42 * g1(uw, vv) + 0.33 * g2(uw, vv) + 0.25 * g3((uw * 2) % 1, vv);
       const grain = ((Math.sin(x * 12.9898 + y * 78.233) * 43758.5453) % 1 + 1) % 1;
-      const base = 208 + 52 * (t - 0.5) * 2 + 6 * (grain - 0.5);
+      const base = 206 + 54 * (t - 0.5) * 2 + 8 * (grain - 0.5);
       const k = (y * w + x) * 4;
       img.data[k]     = Math.min(255, base);
       img.data[k + 1] = Math.min(255, base * 0.99);
@@ -367,24 +424,46 @@ function makeMoonTexture(seed) {
   }
   ctx.putImageData(img, 0, 0);
 
-  // Soft, shallow crater dimples — these moons are dust-blanketed, so the
-  // craters read as faint circular shading, not sharp holes.
   const rand = mulberry32(seed + 9);
-  for (let i = 0; i < 70; i++) {
-    const cx = rand() * w, cy = h * (0.12 + rand() * 0.76);
-    const cr = 3 + rand() * 26;
-    let g = ctx.createRadialGradient(cx, cy, cr * 0.2, cx, cy, cr);
-    g.addColorStop(0, "rgba(70,64,58,0.16)");
-    g.addColorStop(0.75, "rgba(70,64,58,0.05)");
-    g.addColorStop(1, "rgba(70,64,58,0)");
+
+  // A dense crater record — dust-softened dimples in many sizes, the larger
+  // ones with a bright ejecta ring, a few overlapping like real terrain.
+  for (let i = 0; i < 170; i++) {
+    const cx = rand() * w, cy = h * (0.08 + rand() * 0.84);
+    const cr = 2.5 + Math.pow(rand(), 2.2) * 44;
+    const depth = 0.10 + rand() * 0.12;
+    let g = ctx.createRadialGradient(cx, cy, cr * 0.15, cx, cy, cr);
+    g.addColorStop(0, `rgba(66,60,54,${depth})`);
+    g.addColorStop(0.7, `rgba(66,60,54,${depth * 0.35})`);
+    g.addColorStop(1, "rgba(66,60,54,0)");
     ctx.fillStyle = g;
     ctx.beginPath(); ctx.arc(cx, cy, cr, 0, Math.PI * 2); ctx.fill();
-    g = ctx.createRadialGradient(cx, cy, cr * 0.75, cx, cy, cr * 1.15);
-    g.addColorStop(0, "rgba(255,250,240,0)");
-    g.addColorStop(0.55, "rgba(255,250,240,0.10)");
-    g.addColorStop(1, "rgba(255,250,240,0)");
-    ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(cx, cy, cr * 1.15, 0, Math.PI * 2); ctx.fill();
+    if (cr > 12) {
+      g = ctx.createRadialGradient(cx, cy, cr * 0.8, cx, cy, cr * 1.25);
+      g.addColorStop(0, "rgba(255,250,240,0)");
+      g.addColorStop(0.5, `rgba(255,250,240,${0.06 + rand() * 0.08})`);
+      g.addColorStop(1, "rgba(255,250,240,0)");
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(cx, cy, cr * 1.25, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  // Striations along the equatorial ridge: faint grooves where ring dust
+  // rained onto the seam, like in the sharpest Cassini frames of Pan.
+  ctx.lineCap = "round";
+  for (let i = 0; i < 30; i++) {
+    const y0 = h * (0.5 + (rand() - 0.5) * 0.13);
+    const x0 = rand() * w;
+    const len = w * (0.02 + rand() * 0.07);
+    const slope = (rand() - 0.5) * 6;
+    ctx.strokeStyle = rand() < 0.5
+      ? `rgba(60,55,50,${0.06 + rand() * 0.07})`
+      : `rgba(250,245,235,${0.05 + rand() * 0.06})`;
+    ctx.lineWidth = 1.5 + rand() * 2.5;
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x0 + len, y0 + slope);
+    ctx.stroke();
   }
 
   const tex = new THREE.CanvasTexture(canvas);
@@ -447,10 +526,15 @@ function makeMoonGeometry(def, seed) {
 }
 
 function makeMoonMesh(def, seed) {
+  const surface = makeMoonTexture(seed + 7);
   const mesh = new THREE.Mesh(
     makeMoonGeometry(def, seed),
     new THREE.MeshStandardMaterial({
-      map: makeMoonTexture(seed + 7),
+      map: surface,
+      // The same texture as a bump map: craters and grooves catch the
+      // sunlight in real relief when you fly in close.
+      bumpMap: surface,
+      bumpScale: 0.012,
       color: 0xf4efe6,
       vertexColors: true,
       roughness: 0.98,
@@ -663,6 +747,11 @@ const view = {
   lastPointer: null,
   lastInteraction: performance.now(),
 };
+// Starting directly at a moon? Skip the cross-system glide and begin there.
+if (view.mode !== "saturn") {
+  view.target.copy(toWorld(
+    Orbit.moonPositionKm(Orbit.MOONS[view.mode], Orbit.jdTdbFromDate(new Date()))));
+}
 
 renderer.domElement.addEventListener("pointerdown", (e) => {
   view.lastPointer = { x: e.clientX, y: e.clientY };
