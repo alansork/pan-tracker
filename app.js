@@ -783,6 +783,136 @@ function makeStars() {
 }
 scene.add(makeStars());
 
+// --- Earth: home, 9.4 au away --------------------------------------------------
+// Earth sits in its REAL direction as seen from Saturn (computed from both
+// planets' heliocentric orbits — it always hangs within ~6 degrees of the
+// Sun from out here). Its size is true scale next to Saturn; only the
+// distance is compressed for the renderer (9.4 au won't fit in floating
+// point) — the honest distance is what the corner line reports.
+
+const EARTH_RADIUS_UNITS = 6371 * KM;      // true scale: 6,371 km
+const EARTH_SCENE_DIST = 7000;
+
+function earthDirectionWorld(jdTdb) {
+  const e = Orbit.helioPositionAu(Orbit.PLANETS.earth, jdTdb);
+  const s = Orbit.helioPositionAu(Orbit.PLANETS.saturn, jdTdb);
+  // Angle Sun -> Saturn -> Earth around the ecliptic pole...
+  const aSun = Math.atan2(-s.y, -s.x);
+  const aEarth = Math.atan2(e.y - s.y, e.x - s.x);
+  let dAz = aEarth - aSun;
+  if (dAz > Math.PI) dAz -= 2 * Math.PI;
+  if (dAz < -Math.PI) dAz += 2 * Math.PI;
+  // ...applied as an offset to the (exact) Sun direction in the ring frame.
+  const sun = Orbit.sunDirection(jdTdb);
+  const c = Math.cos(dAz), n = Math.sin(dAz);
+  return toWorld({ x: sun.x * c - sun.y * n, y: sun.x * n + sun.y * c, z: sun.z })
+    .normalize();
+}
+
+const earthGroup = new THREE.Group();
+earthGroup.position.copy(
+  earthDirectionWorld(Orbit.jdTdbFromDate(new Date())).multiplyScalar(EARTH_SCENE_DIST));
+scene.add(earthGroup);
+
+// A quiet blue placeholder; the real 8K photographic day-map fades in on load.
+function makeEarthFallbackTexture() {
+  const c = document.createElement("canvas");
+  c.width = 64; c.height = 32;
+  const ctx = c.getContext("2d");
+  const g = ctx.createLinearGradient(0, 0, 0, 32);
+  g.addColorStop(0, "#b8c8d8"); g.addColorStop(0.2, "#2c5d8f");
+  g.addColorStop(0.5, "#1d4e86"); g.addColorStop(0.8, "#2c5d8f");
+  g.addColorStop(1, "#c8d4e0");
+  ctx.fillStyle = g; ctx.fillRect(0, 0, 64, 32);
+  const tex = new THREE.CanvasTexture(c);
+  tex.encoding = THREE.sRGBEncoding;
+  return tex;
+}
+
+const earth = new THREE.Mesh(
+  new THREE.SphereGeometry(EARTH_RADIUS_UNITS, 128, 96),
+  new THREE.MeshStandardMaterial({
+    map: makeEarthFallbackTexture(),
+    roughness: 0.85,
+    metalness: 0,
+  })
+);
+earth.userData.moon = "earth";
+earthGroup.add(earth);
+
+// The pale blue breath of atmosphere past the limb.
+const earthAtmo = new THREE.Mesh(
+  new THREE.SphereGeometry(EARTH_RADIUS_UNITS * 1.025, 64, 48),
+  new THREE.MeshBasicMaterial({
+    color: 0x88b8f0,
+    transparent: true,
+    opacity: 0.22,
+    side: THREE.BackSide,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  })
+);
+earthGroup.add(earthAtmo);
+
+// The real NASA Blue Marble day map, 8K so the continents stay crisp.
+const earthPhoto = new Image();
+earthPhoto.onload = () => {
+  const c = document.createElement("canvas");
+  c.width = earthPhoto.width; c.height = earthPhoto.height;
+  const cx = c.getContext("2d");
+  cx.drawImage(earthPhoto, 0, 0);
+  try { cx.getImageData(0, 0, 1, 1); } catch (e) { return; }  // tainted: keep fallback
+  const tex = new THREE.CanvasTexture(c);
+  tex.encoding = THREE.sRGBEncoding;
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  earth.material.map = tex;
+  earth.material.needsUpdate = true;
+};
+earthPhoto.src = "assets/earth-8k.jpg";
+
+// Tegel, Berlin: 52.5588 N, 13.2884 E — a pin and a whisper of a name,
+// riding on the rotating globe.
+function latLonToLocal(latDeg, lonDeg, r) {
+  const lat = latDeg * Math.PI / 180, lon = lonDeg * Math.PI / 180;
+  return new THREE.Vector3(
+    r * Math.cos(lat) * Math.cos(-lon),
+    r * Math.sin(lat),
+    r * Math.cos(lat) * Math.sin(-lon));
+}
+function makeDotSprite() {
+  const c = document.createElement("canvas");
+  c.width = c.height = 64;
+  const ctx = c.getContext("2d");
+  const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 30);
+  g.addColorStop(0, "rgba(255,255,255,0.95)");
+  g.addColorStop(0.25, "rgba(255,255,255,0.85)");
+  g.addColorStop(0.35, "rgba(255,255,255,0)");
+  g.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = g; ctx.fillRect(0, 0, 64, 64);
+  return new THREE.Sprite(new THREE.SpriteMaterial({
+    map: new THREE.CanvasTexture(c),
+    transparent: true, depthWrite: false,
+  }));
+}
+const tegelDot = makeDotSprite();
+tegelDot.position.copy(latLonToLocal(52.5588, 13.2884, EARTH_RADIUS_UNITS * 1.004));
+tegelDot.scale.setScalar(0.22);
+earth.add(tegelDot);
+const tegelLabel = makeMoonLabel("tegel · berlin");
+tegelLabel.position.copy(latLonToLocal(52.5588, 13.2884, EARTH_RADIUS_UNITS * 1.09));
+// Unlike the moon beacons, a place on a globe should hide when it rotates
+// to the far side — so the pin and its name respect depth.
+tegelLabel.material.depthTest = true;
+earth.add(tegelLabel);
+
+// Big-realm labels: "earth" seen from Saturn, "saturn" seen from Earth.
+labels.earth = makeMoonLabel("earth");
+labels.earth.userData.moon = "earth";
+scene.add(labels.earth);
+labels.saturn = makeMoonLabel("saturn");
+labels.saturn.userData.moon = "saturn";
+scene.add(labels.saturn);
+
 // --- Camera controls: drag to orbit, scroll to zoom, double-click to hop moons ---
 
 // Each stop on the double-click tour: what to look at, how close to swoop in,
@@ -792,8 +922,26 @@ const TOUR = {
   saturn: { radius: 330, minR: 75 },
   pan: { radius: 0.12, minR: 0.035 },
   atlas: { radius: 0.14, minR: 0.04 },
+  earth: { radius: 25, minR: 7.6 },
 };
-const TOUR_ORDER = ["saturn", "pan", "atlas"];
+const TOUR_ORDER = ["saturn", "pan", "atlas", "earth"];
+
+// Where the camera should look for a given stop, at a given moment.
+function modeTarget(mode, jdTdb) {
+  if (mode === "saturn") return new THREE.Vector3(0, 0, 0);
+  if (mode === "earth") return earthGroup.position.clone();
+  return toWorld(Orbit.moonPositionKm(Orbit.MOONS[mode], jdTdb));
+}
+
+// Crossing between the Saturn realm and Earth is a real journey — see the
+// flight block near the main loop.
+function goTo(key) {
+  view.lastInteraction = performance.now();
+  const crossingRealms = (key === "earth") !== (view.mode === "earth");
+  if (crossingRealms) { startFlight(key); return; }
+  view.mode = key;
+  view.desiredRadius = TOUR[key].radius;
+}
 
 // Open with ?view=pan (or atlas) to start there (bookmarkable).
 // &r=<units> overrides the starting camera distance (handy for debugging).
@@ -813,10 +961,9 @@ const view = {
   lastPointer: null,
   lastInteraction: performance.now(),
 };
-// Starting directly at a moon? Skip the cross-system glide and begin there.
+// Starting directly at a moon (or Earth)? Skip the glide and begin there.
 if (view.mode !== "saturn") {
-  view.target.copy(toWorld(
-    Orbit.moonPositionKm(Orbit.MOONS[view.mode], Orbit.jdTdbFromDate(new Date()))));
+  view.target.copy(modeTarget(view.mode, Orbit.jdTdbFromDate(new Date())));
 }
 
 renderer.domElement.addEventListener("pointerdown", (e) => {
@@ -835,15 +982,14 @@ window.addEventListener("pointermove", (e) => {
 window.addEventListener("pointerup", () => { view.lastPointer = null; });
 renderer.domElement.addEventListener("wheel", (e) => {
   e.preventDefault();
+  if (flight.active) return;
   view.desiredRadius = Math.min(3000,
     Math.max(TOUR[view.mode].minR, view.desiredRadius * Math.exp(e.deltaY * 0.0022)));
   view.lastInteraction = performance.now();
 }, { passive: false });
 renderer.domElement.addEventListener("dblclick", () => {
-  const next = TOUR_ORDER[(TOUR_ORDER.indexOf(view.mode) + 1) % TOUR_ORDER.length];
-  view.mode = next;
-  view.desiredRadius = TOUR[next].radius;
-  view.lastInteraction = performance.now();
+  if (flight.active) return;
+  goTo(TOUR_ORDER[(TOUR_ORDER.indexOf(view.mode) + 1) % TOUR_ORDER.length]);
 });
 
 // Click a moon's name (or the moon itself) to fly straight to it.
@@ -854,17 +1000,40 @@ renderer.domElement.addEventListener("pointerdown", (e) => {
 });
 renderer.domElement.addEventListener("click", (e) => {
   if (pressAt && Math.hypot(e.clientX - pressAt.x, e.clientY - pressAt.y) > 6) return; // that was a drag
+  if (flight.active) { hurryFlight(); return; }    // mid-journey click = step on it
   raycaster.setFromCamera(new THREE.Vector2(
     (e.clientX / window.innerWidth) * 2 - 1,
     -(e.clientY / window.innerHeight) * 2 + 1), camera);
   const hit = raycaster.intersectObjects(
-    [labels.pan, labels.atlas, moons.pan, moons.atlas], false)[0];
+    [labels.pan, labels.atlas, labels.earth, labels.saturn, moons.pan, moons.atlas, earth],
+    false)[0];
   if (!hit) return;
-  const key = hit.object.userData.moon;
-  view.mode = key;
-  view.desiredRadius = TOUR[key].radius;
-  view.lastInteraction = performance.now();
+  goTo(hit.object.userData.moon);
 });
+
+// --- The journey home: Saturn <-> Earth at 80x the speed of light ----------------
+// The real distance is what it is (about 78 light-minutes today), so at 80c
+// the crossing honestly takes about a minute. The corner line reports live
+// superluminal speed and the light-minutes still ahead; a click hurries the
+// engine tenfold.
+const flight = {
+  active: false, dest: null,
+  start: new THREE.Vector3(),
+  t0: 0, durS: 0, lightMin: 0,
+};
+function startFlight(destKey) {
+  flight.active = true;
+  flight.dest = destKey;
+  flight.start.copy(camera.position);
+  flight.lightMin = Orbit.lightMinutesToEarth(Orbit.jdTdbFromDate(new Date()));
+  flight.durS = flight.lightMin * 60 / 80;            // 80c
+  flight.t0 = performance.now();
+}
+function hurryFlight() {
+  const p = Math.min(1, (performance.now() - flight.t0) / 1000 / flight.durS);
+  flight.durS /= 10;                                   // ~800c
+  flight.t0 = performance.now() - p * flight.durS * 1000;
+}
 
 // --- Time warp: ← → to fly through time, space to snap back to now ---------------
 // The scene normally runs on the real clock. Warping multiplies time so you
@@ -945,7 +1114,17 @@ function updateHud(now, jd) {
     `atlas ${Orbit.moonLongitudeDeg(Orbit.MOONS.atlas, jd).toFixed(1)}° · ` +
     `true scale`;
 
-  // Third line: Pan's next real shadow crossing + live light-time to Earth.
+  // Third line: mid-flight it narrates the journey; otherwise Pan's next
+  // real shadow crossing + live light-time to Earth.
+  if (flight.active) {
+    const p = Math.min(1, (performance.now() - flight.t0) / 1000 / flight.durS);
+    const speedC = flight.lightMin * 60 * 6 * p * (1 - p) / flight.durS;
+    const aheadMin = (1 - p * p * (3 - 2 * p)) * flight.lightMin;
+    hudExtra.textContent =
+      `en route to ${flight.dest} · ${Math.max(1, Math.round(speedC))}c · ` +
+      `${aheadMin.toFixed(1)} light-min ahead · click to hurry`;
+    return;
+  }
   const ev = panShadowEvent(jd);
   const eclipse = !ev ? "" : ev.type === "enter"
     ? `pan eclipse in ${fmtDur(ev.jd - jd)}`
@@ -1038,25 +1217,73 @@ function animate() {
   saturn.rotation.y =
     saturnPhase + ((jd - Orbit.PAN.epochJdTdb) * 24 / SATURN_DAY_HOURS) * Math.PI * 2;
 
-  // Camera: smooth glide toward where it wants to be.
-  const targetGoal =
-    view.mode === "saturn" ? new THREE.Vector3(0, 0, 0) : moons[view.mode].position;
-  const glide = 1 - Math.exp(-dt * 7);
-  view.target.lerp(targetGoal, glide);
-  // Once we're near a moon, lock on hard — it is a moving target (Pan
-  // covers ~17 km every second) and any lag leaves it off-frame.
-  if (view.mode !== "saturn" && view.target.distanceTo(targetGoal) < 0.5) {
-    view.target.copy(targetGoal);
-  }
-  view.radius += (view.desiredRadius - view.radius) * glide;
-  if (nowMs - view.lastInteraction > 10000) view.theta += dt * 0.012; // idle drift
+  // Earth: real spin — the day side faces the Sun exactly as the UTC clock
+  // says it should (so Berlin is sunlit when Berlin is sunlit).
+  const utcH = now.getUTCHours() + now.getUTCMinutes() / 60 + now.getUTCSeconds() / 3600;
+  const subsolarLonDeg = (12 - utcH) * 15;
+  const sunAzWorld = Math.atan2(sunDir.z, sunDir.x);
+  earth.rotation.y = -subsolarLonDeg * Math.PI / 180 - sunAzWorld;
 
-  camera.position.set(
-    view.target.x + view.radius * Math.sin(view.phi) * Math.cos(view.theta),
-    view.target.y + view.radius * Math.cos(view.phi),
-    view.target.z + view.radius * Math.sin(view.phi) * Math.sin(view.theta)
-  );
-  camera.lookAt(view.target);
+  // Realm-aware labels: moon names live near Saturn, "saturn" appears once
+  // you've left for Earth, "earth" hangs where home is. Tegel's pin only
+  // whispers when you're close enough to care.
+  const camToSaturn = camera.position.length();
+  const camToEarth = camera.position.distanceTo(earthGroup.position);
+  const saturnRealm = 1 - smoothstep(2000, 4500, camToSaturn);
+  for (const key of Object.keys(moons)) labels[key].material.opacity *= saturnRealm;
+  halo.material.opacity *= saturnRealm;
+  labels.earth.position.copy(earthGroup.position);
+  labels.earth.position.y += camToEarth * 0.03;
+  labels.earth.scale.set(camToEarth * 0.09, camToEarth * 0.0225, 1);
+  labels.earth.material.opacity = 0.55 * smoothstep(60, 300, camToEarth);
+  labels.saturn.position.set(0, camToSaturn * 0.03, 0);
+  labels.saturn.scale.set(camToSaturn * 0.09, camToSaturn * 0.0225, 1);
+  labels.saturn.material.opacity = 0.55 * (1 - saturnRealm);
+  const tegelNear = smoothstep(120, 40, camToEarth);   // fades IN as you approach
+  tegelDot.material.opacity = tegelNear;
+  tegelLabel.material.opacity = 0.7 * tegelNear;
+  tegelLabel.scale.set(camToEarth * 0.09, camToEarth * 0.0225, 1);
+
+  if (flight.active) {
+    // --- Mid-journey: 80c toward the destination ------------------------------
+    const p = Math.min(1, (nowMs - flight.t0) / 1000 / flight.durS);
+    const eased = p * p * (3 - 2 * p);
+    const destT = modeTarget(flight.dest, jd);
+    const arrive = flight.start.clone().sub(destT).normalize()
+      .multiplyScalar(TOUR[flight.dest].radius).add(destT);
+    camera.position.lerpVectors(flight.start, arrive, eased);
+    camera.lookAt(destT);
+    if (p >= 1) {
+      // Touchdown: hand the controls back, aimed where we arrived.
+      flight.active = false;
+      view.mode = flight.dest;
+      view.target.copy(destT);
+      view.radius = view.desiredRadius = TOUR[flight.dest].radius;
+      const off = camera.position.clone().sub(destT);
+      view.theta = Math.atan2(off.z, off.x);
+      view.phi = Math.acos(Math.min(1, Math.max(-1, off.y / off.length())));
+      view.lastInteraction = performance.now();
+    }
+  } else {
+    // Camera: smooth glide toward where it wants to be.
+    const targetGoal = modeTarget(view.mode, jd);
+    const glide = 1 - Math.exp(-dt * 7);
+    view.target.lerp(targetGoal, glide);
+    // Once we're near a moon, lock on hard — it is a moving target (Pan
+    // covers ~17 km every second) and any lag leaves it off-frame.
+    if (view.mode !== "saturn" && view.target.distanceTo(targetGoal) < 0.5) {
+      view.target.copy(targetGoal);
+    }
+    view.radius += (view.desiredRadius - view.radius) * glide;
+    if (nowMs - view.lastInteraction > 10000) view.theta += dt * 0.012; // idle drift
+
+    camera.position.set(
+      view.target.x + view.radius * Math.sin(view.phi) * Math.cos(view.theta),
+      view.target.y + view.radius * Math.cos(view.phi),
+      view.target.z + view.radius * Math.sin(view.phi) * Math.sin(view.theta)
+    );
+    camera.lookAt(view.target);
+  }
 
   updateHud(now, jd);
   renderer.render(scene, camera);

@@ -18,6 +18,12 @@ build step.
 
 - **click a moon's name** — fly straight to it (at true scale the floating
   names are how you find a 34 km moon beside a 120,536 km planet)
+- **click "earth"** — the journey home: ~78 light-minutes crossed at 80×
+  the speed of light (so it honestly takes about a minute — click again to
+  push the engine to 800c). Earth hangs in its real direction from Saturn,
+  at true relative size, spinning in real time so the day side matches the
+  actual UTC clock; **Tegel, Berlin** is pinned on the globe, and Saturn
+  stays visible behind you as a small ringed dot. Click "saturn" to go back.
 - **drag** — orbit the camera (fast and loose)
 - **scroll** — zoom
 - **double-click** — tour: Saturn → Pan → Atlas → back
@@ -63,12 +69,15 @@ the shadow Saturn throws across its rings is the real one for today.
   down to the next crossing) — and a **live light-time to Earth** readout
   computed from real planetary orbits (matches NASA to ~0.1%): what you're
   looking at left Saturn that many minutes ago.
-- **Photographic:** Saturn's cloud map is real Cassini spacecraft imagery
-  (texture by [Solar System Scope](https://www.solarsystemscope.com/textures/),
-  CC BY 4.0) — the true soft-gold bands of the planet the moons actually
-  orbit. A painted procedural cloud layer remains as instant fallback while
-  the photo loads (and for file:// opens, where browsers keep image pixels
-  away from WebGL).
+- **Photographic:** Saturn's cloud map is real Cassini spacecraft imagery,
+  and Earth wears the 8K NASA Blue Marble day map (both textures by
+  [Solar System Scope](https://www.solarsystemscope.com/textures/), CC BY
+  4.0). Painted fallbacks remain while the photos load (and for file://
+  opens, where browsers keep image pixels away from WebGL).
+- **Compressed, honestly:** Earth's rendered distance is shortened so the
+  renderer's floating point survives — but its direction from Saturn, its
+  true size next to the planet, and the light-time in the corner are all
+  real. The flight speed readout is computed from the genuine 9+ au gap.
 - **Artistic:** the moons' surface texture is procedurally painted (no probe
   has mapped them fully). The koala is not to scale. Koalas cannot jog.
 
