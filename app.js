@@ -618,6 +618,7 @@ const moons = {
   atlas: makeMoonMesh(Orbit.MOONS.atlas, 111),
 };
 const pan = moons.pan;   // the headline moon
+const MOON_BASE_COLOR = new THREE.Color(0xf4efe6);
 
 // A whisper-quiet floating name beside each moon, so you know who is who.
 function makeMoonLabel(text) {
@@ -929,6 +930,7 @@ if (landing) {
 
 const hudTime = document.getElementById("hud-time");
 const hudLon = document.getElementById("hud-lon");
+const hudExtra = document.getElementById("hud-extra");
 const hint = document.getElementById("hint");
 setTimeout(() => hint.classList.add("faded"), 12000);
 
@@ -944,6 +946,31 @@ function updateHud(now, jd) {
     `pan ${Orbit.moonLongitudeDeg(Orbit.MOONS.pan, jd).toFixed(1)}° · ` +
     `atlas ${Orbit.moonLongitudeDeg(Orbit.MOONS.atlas, jd).toFixed(1)}° · ` +
     `true scale`;
+
+  // Third line: Pan's next real shadow crossing + live light-time to Earth.
+  const ev = panShadowEvent(jd);
+  const eclipse = !ev ? "" : ev.type === "enter"
+    ? `pan eclipse in ${fmtDur(ev.jd - jd)}`
+    : `pan in saturn's shadow · sunrise in ${fmtDur(ev.jd - jd)}`;
+  hudExtra.textContent =
+    `${eclipse} · light to earth ${Orbit.lightMinutesToEarth(jd).toFixed(1)} min`;
+}
+
+// Predicting the shadow crossing costs a sweep of the orbit, so cache it and
+// only recompute when it has passed (or after a big time-warp jump).
+let shadowCache = { atJd: -1e9, event: null };
+function panShadowEvent(jd) {
+  if (!shadowCache.event || jd >= shadowCache.event.jd ||
+      Math.abs(jd - shadowCache.atJd) > 0.05) {
+    shadowCache = { atJd: jd, event: Orbit.nextShadowEvent(Orbit.MOONS.pan, jd) };
+  }
+  return shadowCache.event;
+}
+
+// "0.113 days" -> "2h 43m"
+function fmtDur(days) {
+  const m = Math.max(0, Math.round(days * 1440));
+  return m >= 60 ? `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m` : `${m}m`;
 }
 
 // --- Main loop ---------------------------------------------------------------------
@@ -981,6 +1008,12 @@ function animate() {
     const def = Orbit.MOONS[key];
     mesh.position.copy(toWorld(Orbit.moonPositionKm(def, jd)));
     mesh.rotation.y = Orbit.moonLongitudeDeg(def, jd) * Math.PI / 180 + Math.PI;
+    // Real eclipses: every 13.8 h lap the moon crosses Saturn's shadow cone
+    // and truly goes dark (soft penumbra included). A sliver of light stays —
+    // starlight and the sunlit rings still glow faintly.
+    const lit = Orbit.moonSunlitFraction(def, jd);
+    mesh.material.color.copy(MOON_BASE_COLOR).multiplyScalar(0.12 + 0.88 * lit);
+    if (key === "pan") koala.material.color.setScalar(0.25 + 0.75 * lit);
     // The name floats above its moon — big and readable from any distance
     // (at true scale it's the only way to find a 34 km speck), fading away
     // once you've flown in close.

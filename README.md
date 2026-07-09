@@ -57,7 +57,12 @@ the shadow Saturn throws across its rings is the real one for today.
   ellipsoid shapes with their equatorial ridges — **at true scale**,
   including the true (enormous) size difference between the planet and its
   34 km moons — the Sun's direction (which drives the lighting and ring
-  shadows), and warm planet-shine on the moons' night sides.
+  shadows), and warm planet-shine on the moons' night sides. Also:
+  **real eclipses** — every 13.8 h lap Pan crosses the planet's shadow cone
+  and truly goes dark (exact umbra/penumbra geometry; the corner line counts
+  down to the next crossing) — and a **live light-time to Earth** readout
+  computed from real planetary orbits (matches NASA to ~0.1%): what you're
+  looking at left Saturn that many minutes ago.
 - **Photographic:** the planet's cloud map is real spacecraft imagery
   (texture by [Solar System Scope](https://www.solarsystemscope.com/textures/),
   CC BY 4.0) — chosen by sorkthropic for its Hubble-Jupiter drama, Great Red

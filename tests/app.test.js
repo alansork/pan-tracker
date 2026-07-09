@@ -77,6 +77,32 @@ expectClose(
             lonOf(-1.148537806471196e5, -7.377279213622262e4)),
   0, 0.001, "daphnis matches Horizons 8 years before epoch");
 
+// --- Light-time to Earth vs Horizons ------------------------------------------
+// Horizons Earth->Saturn range: 9.380 au on 2026-07-08, 10.996 au on 2020-01-01.
+expectClose(Orbit.lightMinutesToEarth(2461229.5), 78.02, 1.0,
+  "light-time to Earth on 2026-07-08 (~78 min)");
+expectClose(Orbit.lightMinutesToEarth(2458849.5), 91.46, 1.0,
+  "light-time to Earth on 2020-01-01 (~91 min)");
+
+// --- Eclipses -------------------------------------------------------------------
+// Find the moment Pan stands exactly anti-sunward — mid-eclipse.
+let jdE = 2461228.5;
+for (let i = 0; i < 4; i++) {
+  const sun = Orbit.sunDirection(jdE);
+  const anti = lonOf(-sun.x, -sun.y);
+  const delta = ((anti - Orbit.panLongitudeDeg(jdE)) % 360 + 360) % 360;
+  jdE += delta / Orbit.PAN.meanMotionDegPerDay;
+}
+expectClose(Orbit.moonSunlitFraction(Orbit.MOONS.pan, jdE), 0, 1e-9,
+  "pan is fully dark in mid-eclipse behind saturn");
+expectClose(Orbit.moonSunlitFraction(Orbit.MOONS.pan, jdE + 50 / 626.03), 1, 1e-9,
+  "pan is back in full sun 50 degrees later");
+const exitEv = Orbit.nextShadowEvent(Orbit.MOONS.pan, jdE);
+expectClose(exitEv && exitEv.type === "exit" ? 1 : 0, 1, 0,
+  "next event from mid-eclipse is the exit");
+expectClose(exitEv.jd - jdE, 0.041, 0.02,
+  "eclipse half-duration is about an hour");
+
 // --- Geometry sanity ----------------------------------------------------------
 // Position must sit on the orbit circle, in the ring plane.
 const p = Orbit.panPositionKm(2461228.5);
