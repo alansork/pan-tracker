@@ -63,12 +63,12 @@ the shadow Saturn throws across its rings is the real one for today.
   down to the next crossing) — and a **live light-time to Earth** readout
   computed from real planetary orbits (matches NASA to ~0.1%): what you're
   looking at left Saturn that many minutes ago.
-- **Photographic:** the planet's cloud map is real spacecraft imagery
+- **Photographic:** Saturn's cloud map is real Cassini spacecraft imagery
   (texture by [Solar System Scope](https://www.solarsystemscope.com/textures/),
-  CC BY 4.0) — chosen by sorkthropic for its Hubble-Jupiter drama, Great Red
-  Spot and all, so yes: the planet wears Jupiter's actual clouds. A painted
-  procedural cloud layer remains as instant fallback while the photo loads
-  (and for file:// opens, where browsers keep image pixels away from WebGL).
+  CC BY 4.0) — the true soft-gold bands of the planet the moons actually
+  orbit. A painted procedural cloud layer remains as instant fallback while
+  the photo loads (and for file:// opens, where browsers keep image pixels
+  away from WebGL).
 - **Artistic:** the moons' surface texture is procedurally painted (no probe
   has mapped them fully). The koala is not to scale. Koalas cannot jog.
 

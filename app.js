@@ -274,12 +274,11 @@ const atmosphere = new THREE.Mesh(
 atmosphere.scale.y = SATURN_FLATTENING;
 scene.add(atmosphere);
 
-// The planet's clouds, upgraded to real photography: a cylindrical map
-// derived from actual spacecraft imagery (Solar System Scope, CC BY 4.0),
-// per sorkthropic's Hubble-photo reference. The painted procedural clouds
-// above stay as the instant fallback — and for file:// opens, where
-// browsers refuse to hand local image pixels to WebGL. Once the photo is
-// in, the planet turns so its Great Red Spot faces the camera.
+// Saturn's clouds, in real photography: a cylindrical map derived from
+// actual Cassini spacecraft imagery (Solar System Scope, CC BY 4.0) — the
+// soft gold bands of the real planet. The painted procedural clouds above
+// stay as the instant fallback — and for file:// opens, where browsers
+// refuse to hand local image pixels to WebGL.
 const cloudPhoto = new Image();
 cloudPhoto.onload = () => {
   const c = document.createElement("canvas");
@@ -295,7 +294,6 @@ cloudPhoto.onload = () => {
   tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
   saturn.material.map = tex;
   saturn.material.needsUpdate = true;
-  saturnPhase = phaseToFace(0.365);   // the photo's Great Red Spot longitude
   console.log("cloud photo applied");
 };
 // One quiet retry if the first fetch is interrupted.
@@ -304,10 +302,10 @@ cloudPhoto.onerror = () => {
   console.log("cloud photo failed to load" + (cloudPhotoRetried ? "" : "; retrying"));
   if (!cloudPhotoRetried) {
     cloudPhotoRetried = true;
-    setTimeout(() => { cloudPhoto.src = "assets/jupiter-8k.jpg?retry"; }, 2500);
+    setTimeout(() => { cloudPhoto.src = "assets/saturn-8k.jpg?retry"; }, 2500);
   }
 };
-cloudPhoto.src = "assets/jupiter-8k.jpg";
+cloudPhoto.src = "assets/saturn-8k.jpg";
 
 // --- The rings ----------------------------------------------------------------
 // Real radial structure, in km from Saturn's center:
