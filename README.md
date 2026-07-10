@@ -23,7 +23,8 @@ build step.
   push the engine to 800c). Earth hangs in its real direction from Saturn,
   at true relative size, spinning in real time so the day side matches the
   actual UTC clock; **Tegel, Berlin** is pinned on the globe, and Saturn
-  stays visible behind you as a small ringed dot. Click "saturn" to go back.
+  stays visible behind you exactly as it looks from Earth — a bright
+  star-like dot. Click "saturn" to go back.
 - **drag** — orbit the camera (fast and loose)
 - **scroll** — zoom
 - **double-click** — tour: Saturn → Pan → Atlas → back
@@ -74,10 +75,12 @@ the shadow Saturn throws across its rings is the real one for today.
   [Solar System Scope](https://www.solarsystemscope.com/textures/), CC BY
   4.0). Painted fallbacks remain while the photos load (and for file://
   opens, where browsers keep image pixels away from WebGL).
-- **Compressed, honestly:** Earth's rendered distance is shortened so the
-  renderer's floating point survives — but its direction from Saturn, its
-  true size next to the planet, and the light-time in the corner are all
-  real. The flight speed readout is computed from the genuine 9+ au gap.
+- **The real gulf:** Earth sits at its true rendered distance — ~9.4 au,
+  about 1.4 billion km (a floating-origin scheme keeps the renderer's
+  precision healthy across it). Which means the view from Earth is honest
+  too: Saturn's disk spans ~18 arcseconds, far below one pixel, so it
+  appears exactly as it does in Earth's real night sky — a bright
+  star-like point of light, marked with its name.
 - **Artistic:** the moons' surface texture is procedurally painted (no probe
   has mapped them fully). The koala is not to scale. Koalas cannot jog.
 

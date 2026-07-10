@@ -68,8 +68,17 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
+// Far plane reaches past the REAL Earth-Saturn distance (~1.4 million units);
+// the logarithmic depth buffer keeps close-ups precise anyway.
 const camera = new THREE.PerspectiveCamera(
-  45, window.innerWidth / window.innerHeight, 0.002, 20000);
+  45, window.innerWidth / window.innerHeight, 0.002, 4e6);
+
+// Floating origin: everything physical lives in this group. Rendering maths
+// breaks down a million units from the origin, so we quietly re-anchor the
+// world to whichever planet the camera is closest to — shifting the group
+// and the camera by the same amount, which is visually a no-op.
+const world = new THREE.Group();
+scene.add(world);
 
 // --- Sunlight (real direction from orbit.js) --------------------------------
 
@@ -91,7 +100,7 @@ scene.add(sunLight.target);
 // "Saturn-shine": the planet and rings reflect sunlight onto the moons'
 // inward faces, just like earthshine on our own Moon.
 scene.add(new THREE.AmbientLight(0x28313e, 0.18));
-scene.add(new THREE.PointLight(0xc9b990, 0.4, 0, 0));   // glows from Saturn's center
+world.add(new THREE.PointLight(0xc9b990, 0.4, 0, 0));   // glows from Saturn's center
 
 // --- Saturn ------------------------------------------------------------------
 
@@ -256,7 +265,7 @@ const saturn = new THREE.Mesh(
 saturn.scale.y = SATURN_FLATTENING;   // the famous squashed profile
 saturn.castShadow = true;
 saturn.receiveShadow = true;
-scene.add(saturn);
+world.add(saturn);
 
 // A whisper of atmospheric haze just past the limb, so the disk melts into
 // space softly instead of ending at a hard computer-graphics edge.
@@ -272,7 +281,7 @@ const atmosphere = new THREE.Mesh(
   })
 );
 atmosphere.scale.y = SATURN_FLATTENING;
-scene.add(atmosphere);
+world.add(atmosphere);
 
 // Saturn's clouds, in real photography: a cylindrical map derived from
 // actual Cassini spacecraft imagery (Solar System Scope, CC BY 4.0) — the
@@ -415,7 +424,7 @@ function makeRings() {
   mesh.receiveShadow = true;
   return mesh;
 }
-scene.add(makeRings());
+world.add(makeRings());
 
 // --- Pan, the ravioli ----------------------------------------------------------
 // Built from a sphere whose every vertex is pushed to the surface of Pan's
@@ -604,7 +613,7 @@ function makeMoonMesh(def, seed) {
   // No receiveShadow: these moons sit exactly in the ring plane, so the
   // paper-thin ring shadow grazes them and covers them in shadow-map acne.
   mesh.receiveShadow = false;
-  scene.add(mesh);
+  world.add(mesh);
   return mesh;
 }
 
@@ -640,7 +649,7 @@ for (const key of Object.keys(moons)) {
   labels[key] = makeMoonLabel(key);
   labels[key].userData.moon = key;
   moons[key].userData.moon = key;
-  scene.add(labels[key]);
+  world.add(labels[key]);
 }
 
 // A soft halo so you can find the little one from far away.
@@ -666,7 +675,7 @@ function makeHalo() {
   return new THREE.Sprite(mat);
 }
 const halo = makeHalo();
-scene.add(halo);
+world.add(halo);
 
 // --- Easter egg: sorkthropic's koala, out for a jog around Pan -------------------
 // (the ASCII koala from the profile README, painted onto a tiny billboard;
@@ -729,7 +738,7 @@ function makeOrbitLine() {
     new THREE.LineBasicMaterial({ color: 0xbfd4ff, transparent: true, opacity: 0.07 })
   );
 }
-scene.add(makeOrbitLine());
+world.add(makeOrbitLine());
 
 // --- Stars ----------------------------------------------------------------------
 
@@ -781,17 +790,19 @@ function makeStars() {
   cloud(2200, 1.1, true);    // the Milky Way dust of faint stars
   return group;
 }
-scene.add(makeStars());
+const stars = makeStars();
+scene.add(stars);   // the sky stays centred on the camera, wherever it roams
 
 // --- Earth: home, 9.4 au away --------------------------------------------------
 // Earth sits in its REAL direction as seen from Saturn (computed from both
 // planets' heliocentric orbits — it always hangs within ~6 degrees of the
-// Sun from out here). Its size is true scale next to Saturn; only the
-// distance is compressed for the renderer (9.4 au won't fit in floating
-// point) — the honest distance is what the corner line reports.
+// Sun from out here), at its REAL distance: about 1.4 billion km today.
+// The floating origin (see below) keeps the renderer's floating point
+// healthy across that gulf.
 
 const EARTH_RADIUS_UNITS = 6371 * KM;      // true scale: 6,371 km
-const EARTH_SCENE_DIST = 7000;
+const EARTH_SCENE_DIST =
+  Orbit.earthSaturnDistanceAu(Orbit.jdTdbFromDate(new Date())) * 149597870.7 * KM;
 
 function earthDirectionWorld(jdTdb) {
   const e = Orbit.helioPositionAu(Orbit.PLANETS.earth, jdTdb);
@@ -812,7 +823,7 @@ function earthDirectionWorld(jdTdb) {
 const earthGroup = new THREE.Group();
 earthGroup.position.copy(
   earthDirectionWorld(Orbit.jdTdbFromDate(new Date())).multiplyScalar(EARTH_SCENE_DIST));
-scene.add(earthGroup);
+world.add(earthGroup);
 
 // A quiet blue placeholder; the real 8K photographic day-map fades in on load.
 function makeEarthFallbackTexture() {
@@ -908,10 +919,37 @@ earth.add(tegelLabel);
 // Big-realm labels: "earth" seen from Saturn, "saturn" seen from Earth.
 labels.earth = makeMoonLabel("earth");
 labels.earth.userData.moon = "earth";
-scene.add(labels.earth);
+world.add(labels.earth);
 labels.saturn = makeMoonLabel("saturn");
 labels.saturn.userData.moon = "saturn";
-scene.add(labels.saturn);
+world.add(labels.saturn);
+
+// From Earth, Saturn is truly a bright star-like point — its disk spans
+// ~18 arcseconds, far below one pixel. This small glow is its honest
+// naked-eye appearance in Earth's sky, sitting exactly where Saturn is.
+const saturnBeacon = makeDotSprite();
+saturnBeacon.material.opacity = 0;
+saturnBeacon.userData.moon = "saturn";
+world.add(saturnBeacon);
+
+// --- Floating origin --------------------------------------------------------------
+// Shift the whole world — and the camera with it, so nothing visibly moves —
+// to keep whichever planet is nearby at the origin, where floats are precise.
+// The far planet wobbles by a few hundred km, which at 9.4 au is far below
+// a pixel.
+let anchoredToEarth = false;
+function setAnchor(toEarth) {
+  if (toEarth === anchoredToEarth) return;
+  const newPos = toEarth
+    ? earthGroup.position.clone().negate()
+    : new THREE.Vector3(0, 0, 0);
+  const delta = newPos.clone().sub(world.position);
+  world.position.copy(newPos);
+  camera.position.add(delta);
+  view.target.add(delta);
+  flight.start.add(delta);
+  anchoredToEarth = toEarth;
+}
 
 // --- Camera controls: drag to orbit, scroll to zoom, double-click to hop moons ---
 
@@ -926,11 +964,12 @@ const TOUR = {
 };
 const TOUR_ORDER = ["saturn", "pan", "atlas", "earth"];
 
-// Where the camera should look for a given stop, at a given moment.
+// Where the camera should look for a given stop, at a given moment —
+// in scene coordinates (i.e. including the floating-origin shift).
 function modeTarget(mode, jdTdb) {
-  if (mode === "saturn") return new THREE.Vector3(0, 0, 0);
-  if (mode === "earth") return earthGroup.position.clone();
-  return toWorld(Orbit.moonPositionKm(Orbit.MOONS[mode], jdTdb));
+  if (mode === "saturn") return world.position.clone();
+  if (mode === "earth") return earthGroup.position.clone().add(world.position);
+  return toWorld(Orbit.moonPositionKm(Orbit.MOONS[mode], jdTdb)).add(world.position);
 }
 
 // Crossing between the Saturn realm and Earth is a real journey — see the
@@ -1179,6 +1218,14 @@ function animate() {
   const now = new Date(warp.simMs);
   const jd = Orbit.jdTdbFromDate(now);
 
+  // Floating origin: anchor the world to whichever planet is nearer, and
+  // keep the sky's star sphere centred on the camera.
+  setAnchor(
+    camera.position.distanceTo(earthGroup.position.clone().add(world.position)) <
+    camera.position.distanceTo(world.position));
+  const camLocal = camera.position.clone().sub(world.position);
+  stars.position.copy(camera.position);
+
   // Every moon at its exact position (the whole point of the app),
   // tidally locked so its long axis always points at Saturn.
   for (const [key, mesh] of Object.entries(moons)) {
@@ -1195,7 +1242,7 @@ function animate() {
     // (at true scale it's the only way to find a 34 km speck), fading away
     // once you've flown in close.
     const label = labels[key];
-    const d = camera.position.distanceTo(mesh.position);
+    const d = camLocal.distanceTo(mesh.position);
     label.position.copy(mesh.position);
     label.position.y += def.radiiKm.polar * KM * PAN_VISUAL_SCALE + d * 0.03;
     label.scale.set(d * 0.09, d * 0.0225, 1);
@@ -1203,7 +1250,7 @@ function animate() {
   }
 
   // Halo hugs Pan, sized for the current distance, fading when you're close.
-  const camDistToPan = camera.position.distanceTo(pan.position);
+  const camDistToPan = camLocal.distanceTo(pan.position);
   halo.position.copy(pan.position);
   halo.scale.setScalar(Math.max(2.5, camDistToPan * 0.035));
   halo.material.opacity =
@@ -1227,8 +1274,8 @@ function animate() {
   // Realm-aware labels: moon names live near Saturn, "saturn" appears once
   // you've left for Earth, "earth" hangs where home is. Tegel's pin only
   // whispers when you're close enough to care.
-  const camToSaturn = camera.position.length();
-  const camToEarth = camera.position.distanceTo(earthGroup.position);
+  const camToSaturn = camLocal.length();
+  const camToEarth = camLocal.distanceTo(earthGroup.position);
   const saturnRealm = 1 - smoothstep(2000, 4500, camToSaturn);
   for (const key of Object.keys(moons)) labels[key].material.opacity *= saturnRealm;
   halo.material.opacity *= saturnRealm;
@@ -1239,6 +1286,10 @@ function animate() {
   labels.saturn.position.set(0, camToSaturn * 0.03, 0);
   labels.saturn.scale.set(camToSaturn * 0.09, camToSaturn * 0.0225, 1);
   labels.saturn.material.opacity = 0.55 * (1 - saturnRealm);
+  // Saturn's honest naked-eye self: a bright star-like point in Earth's sky
+  // (the planet's real disk is far below one pixel from 9.4 au away).
+  saturnBeacon.scale.setScalar(camToSaturn * 0.006);
+  saturnBeacon.material.opacity = 0.95 * (1 - saturnRealm);
   const tegelNear = smoothstep(120, 40, camToEarth);   // fades IN as you approach
   tegelDot.material.opacity = tegelNear;
   tegelLabel.material.opacity = 0.7 * tegelNear;
